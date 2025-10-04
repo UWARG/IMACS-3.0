@@ -94,6 +94,8 @@ function MapSectionNonMemo({
     setContextMenuPositionCalculationInfo,
   ] = useState()
   const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
+  const [savedCoordinates, setSavedCoordinates] = useState([])
+  const [showSubmenu, setShowSubmenu] = useState(false)
 
   const clipboard = useClipboard({ timeout: 500 })
 
@@ -169,6 +171,21 @@ function MapSectionNonMemo({
     }
   }, [homePosition])
 
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (clicked && contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
+        setClicked(false)
+        setShowSubmenu(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [clicked])
+
   return (
     <div className="w-initial h-full" id="map">
       <Map
@@ -189,7 +206,14 @@ function MapSectionNonMemo({
         onContextMenu={(e) => {
           e.preventDefault()
           setClicked(true)
+          setShowSubmenu(false)
           setClickedGpsCoords(e.lngLat)
+          // Save coordinates for future use
+          setSavedCoordinates(prev => [...prev, {
+            lat: e.lngLat.lat,
+            lng: e.lngLat.lng,
+            timestamp: new Date().toISOString()
+          }])
           setContextMenuPositionCalculationInfo({
             clickedPoint: e.point,
             canvasSize: {
@@ -294,15 +318,17 @@ function MapSectionNonMemo({
         {clicked && (
           <div
             ref={contextMenuRef}
-            className="absolute bg-falcongrey-700 rounded-md p-1"
+            className="absolute bg-falcongrey-700 rounded-md p-1 min-w-[180px]"
             style={{ top: points.y, left: points.x }}
           >
+            {/* Copy Coordinates */}
             <ContextMenuItem
               onClick={() => {
                 clipboard.copy(
                   `${clickedGpsCoords.lat}, ${clickedGpsCoords.lng}`,
                 )
                 showNotification("Copied to clipboard")
+                setClicked(false)
               }}
             >
               <div className="w-full flex justify-between gap-2">
@@ -320,6 +346,99 @@ function MapSectionNonMemo({
                   <path
                     fill="currentColor"
                     d="M9 18q-.825 0-1.412-.587T7 16V4q0-.825.588-1.412T9 2h9q.825 0 1.413.588T20 4v12q0 .825-.587 1.413T18 18zm0-2h9V4H9zm-4 6q-.825 0-1.412-.587T3 20V7q0-.425.288-.712T4 6t.713.288T5 7v13h10q.425 0 .713.288T16 21t-.288.713T15 22zm4-6V4z"
+                  />
+                </svg>
+              </div>
+            </ContextMenuItem>
+
+            {/* Divider */}
+            <div className="border-t border-falcongrey-600 my-1"></div>
+
+            {/* Insert Command */}
+            <div className="relative">
+              <ContextMenuItem
+                onClick={() => {
+                  setShowSubmenu(!showSubmenu)
+                }}
+              >
+                <div className="w-full flex justify-between gap-2">
+                  <span>Insert Command</span>
+                  <svg
+                    className={`transform transition-transform ${showSubmenu ? 'rotate-90' : ''}`}
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M8.59 16.59L13.17 12L8.59 7.41L10 6l6 6l-6 6l-1.41-1.41z"
+                    />
+                  </svg>
+                </div>
+              </ContextMenuItem>
+              
+              {/* Insert Submenu */}
+              {showSubmenu && (
+                <div className="absolute left-full top-0 ml-1 bg-falcongrey-700 rounded-md p-1 min-w-[140px] shadow-lg">
+                  <ContextMenuItem
+                    onClick={() => {
+                      console.log("Insert Waypoint at:", clickedGpsCoords)
+                      setClicked(false)
+                      setShowSubmenu(false)
+                    }}
+                  >
+                    <span>Waypoint</span>
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => {
+                      console.log("Insert Land at:", clickedGpsCoords)
+                      setClicked(false)
+                      setShowSubmenu(false)
+                    }}
+                  >
+                    <span>Land</span>
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => {
+                      console.log("Insert Takeoff at:", clickedGpsCoords)
+                      setClicked(false)
+                      setShowSubmenu(false)
+                    }}
+                  >
+                    <span>Takeoff</span>
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => {
+                      console.log("Insert Return to Launch at:", clickedGpsCoords)
+                      setClicked(false)
+                      setShowSubmenu(false)
+                    }}
+                  >
+                    <span>Return to Launch</span>
+                  </ContextMenuItem>
+                </div>
+              )}
+            </div>
+
+            {/* Delete Command */}
+            <ContextMenuItem
+              onClick={() => {
+                console.log("Delete command at:", clickedGpsCoords)
+                setClicked(false)
+              }}
+            >
+              <div className="w-full flex justify-between gap-2">
+                <span>Delete Command</span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M7 21q-.825 0-1.412-.587T5 19V6H4V4h5V3h6v1h5v2h-1v13q0 .825-.587 1.413T17 21zm2-4h2V8H9zm4 0h2V8h-2z"
                   />
                 </svg>
               </div>

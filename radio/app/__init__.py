@@ -7,7 +7,9 @@ import yaml
 from flask import Flask
 from flask_socketio import SocketIO
 
-CONFIG_FILE = os.path.join(os.getcwd(), "IMACS.yml")
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "IMACS.yml")
+CONFIG_FILE = os.path.normpath(CONFIG_FILE)
+
 
 def create_directory(path: str, count: int) -> str:
     """
@@ -32,11 +34,11 @@ def create_directory(path: str, count: int) -> str:
         return create_directory(path, count + 1)
 
 
-with open(CONFIG_FILE, 'r') as file:
+with open(CONFIG_FILE, "r") as file:
     config = yaml.safe_load(file)
 
-if 'logs' in config and config['logs'].get('location'):
-    log_dir = config['logs']['location']
+if "logs" in config and config["logs"].get("location"):
+    log_dir = config["logs"]["location"]
 else:
     log_dir = os.path.expanduser("~/.imacs/logs")
 
