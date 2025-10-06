@@ -7,11 +7,10 @@
 */
 
 // Base imports
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useState } from "react"
 
 // Maplibre and mantine imports
 import {
-  useClipboard,
   useLocalStorage,
   usePrevious,
   useSessionStorage,
@@ -22,17 +21,15 @@ import Map from "react-map-gl/maplibre"
 // Helper scripts
 import { intToCoord } from "../../helpers/dataFormatters"
 import { filterMissionItems } from "../../helpers/filterMissions"
-import { showNotification } from "../../helpers/notification"
 import { useSettings } from "../../helpers/settings"
 
 // Other dashboard imports
-import ContextMenuItem from "../mapComponents/contextMenuItem"
+import MissionContextMenuOverlay, { useMissionContextMenu } from "./missionContextMenu"
 import DrawLineCoordinates from "../mapComponents/drawLineCoordinates"
 import DroneMarker from "../mapComponents/droneMarker"
 import HomeMarker from "../mapComponents/homeMarker"
 import MarkerPin from "../mapComponents/markerPin"
 import MissionItems from "../mapComponents/missionItems"
-import useContextMenu from "../mapComponents/useContextMenu"
 
 // Tailwind styling
 import resolveConfig from "tailwindcss/resolveConfig"
@@ -87,17 +84,7 @@ function MapSectionNonMemo({
   )
   const [filteredMissionItems, setFilteredMissionItems] = useState([])
 
-  const contextMenuRef = useRef()
-  const { clicked, setClicked, points, setPoints } = useContextMenu()
-  const [
-    contextMenuPositionCalculationInfo,
-    setContextMenuPositionCalculationInfo,
-  ] = useState()
-  const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
-  const [savedCoordinates, setSavedCoordinates] = useState([])
-  const [showSubmenu, setShowSubmenu] = useState(false)
-
-  const clipboard = useClipboard({ timeout: 500 })
+  const ctx = useMissionContextMenu()
 
   useEffect(() => {
     return () => {}
@@ -122,34 +109,7 @@ function MapSectionNonMemo({
     setMissionItemsList(missionItems.mission_items)
   }, [missionItems])
 
-  useEffect(() => {
-    if (contextMenuRef.current) {
-      const contextMenuWidth = Math.round(
-        contextMenuRef.current.getBoundingClientRect().width,
-      )
-      const contextMenuHeight = Math.round(
-        contextMenuRef.current.getBoundingClientRect().height,
-      )
-      let x = contextMenuPositionCalculationInfo.clickedPoint.x
-      let y = contextMenuPositionCalculationInfo.clickedPoint.y
-
-      if (
-        contextMenuWidth + contextMenuPositionCalculationInfo.clickedPoint.x >
-        contextMenuPositionCalculationInfo.canvasSize.width
-      ) {
-        x = contextMenuPositionCalculationInfo.clickedPoint.x - contextMenuWidth
-      }
-      if (
-        contextMenuHeight + contextMenuPositionCalculationInfo.clickedPoint.y >
-        contextMenuPositionCalculationInfo.canvasSize.height
-      ) {
-        y =
-          contextMenuPositionCalculationInfo.clickedPoint.y - contextMenuHeight
-      }
-
-      setPoints({ x, y })
-    }
-  }, [contextMenuPositionCalculationInfo])
+  // Context menu positioning is handled inside useMissionContextMenu
 
   useEffect(() => {
     // center map on home point only on first instance of home point being
@@ -171,20 +131,7 @@ function MapSectionNonMemo({
     }
   }, [homePosition])
 
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (clicked && contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
-        setClicked(false)
-        setShowSubmenu(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [clicked])
+  // Context menu close logic is handled inside useMissionContextMenu
 
   return (
     <div className="w-initial h-full" id="map">
@@ -203,25 +150,7 @@ function MapSectionNonMemo({
           })
         }
         onDragStart={onDragstart}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          setClicked(true)
-          setShowSubmenu(false)
-          setClickedGpsCoords(e.lngLat)
-          // Save coordinates for future use
-          setSavedCoordinates(prev => [...prev, {
-            lat: e.lngLat.lat,
-            lng: e.lngLat.lng,
-            timestamp: new Date().toISOString()
-          }])
-          setContextMenuPositionCalculationInfo({
-            clickedPoint: e.point,
-            canvasSize: {
-              height: e.originalEvent.target.clientHeight,
-              width: e.originalEvent.target.clientWidth,
-            },
-          })
-        }}
+        onContextMenu={ctx.handleContextMenu}
         cursor="default"
       >
         {/* Show marker on map if the position is set */}
@@ -315,136 +244,7 @@ function MapSectionNonMemo({
           />
         )}
 
-        {clicked && (
-          <div
-            ref={contextMenuRef}
-            className="absolute bg-falcongrey-700 rounded-md p-1 min-w-[180px]"
-            style={{ top: points.y, left: points.x }}
-          >
-            {/* Copy Coordinates */}
-            <ContextMenuItem
-              onClick={() => {
-                clipboard.copy(
-                  `${clickedGpsCoords.lat}, ${clickedGpsCoords.lng}`,
-                )
-                showNotification("Copied to clipboard")
-                setClicked(false)
-              }}
-            >
-              <div className="w-full flex justify-between gap-2">
-                <p>
-                  {clickedGpsCoords.lat.toFixed(coordsFractionDigits)},{" "}
-                  {clickedGpsCoords.lng.toFixed(coordsFractionDigits)}
-                </p>
-                <svg
-                  className="relative -right-1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M9 18q-.825 0-1.412-.587T7 16V4q0-.825.588-1.412T9 2h9q.825 0 1.413.588T20 4v12q0 .825-.587 1.413T18 18zm0-2h9V4H9zm-4 6q-.825 0-1.412-.587T3 20V7q0-.425.288-.712T4 6t.713.288T5 7v13h10q.425 0 .713.288T16 21t-.288.713T15 22zm4-6V4z"
-                  />
-                </svg>
-              </div>
-            </ContextMenuItem>
-
-            {/* Divider */}
-            <div className="border-t border-falcongrey-600 my-1"></div>
-
-            {/* Insert Command */}
-            <div className="relative">
-              <ContextMenuItem
-                onClick={() => {
-                  setShowSubmenu(!showSubmenu)
-                }}
-              >
-                <div className="w-full flex justify-between gap-2">
-                  <span>Insert Command</span>
-                  <svg
-                    className={`transform transition-transform ${showSubmenu ? 'rotate-90' : ''}`}
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      fill="currentColor"
-                      d="M8.59 16.59L13.17 12L8.59 7.41L10 6l6 6l-6 6l-1.41-1.41z"
-                    />
-                  </svg>
-                </div>
-              </ContextMenuItem>
-              
-              {/* Insert Submenu */}
-              {showSubmenu && (
-                <div className="absolute left-full top-0 ml-1 bg-falcongrey-700 rounded-md p-1 min-w-[140px] shadow-lg">
-                  <ContextMenuItem
-                    onClick={() => {
-                      console.log("Insert Waypoint at:", clickedGpsCoords)
-                      setClicked(false)
-                      setShowSubmenu(false)
-                    }}
-                  >
-                    <span>Waypoint</span>
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onClick={() => {
-                      console.log("Insert Land at:", clickedGpsCoords)
-                      setClicked(false)
-                      setShowSubmenu(false)
-                    }}
-                  >
-                    <span>Land</span>
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onClick={() => {
-                      console.log("Insert Takeoff at:", clickedGpsCoords)
-                      setClicked(false)
-                      setShowSubmenu(false)
-                    }}
-                  >
-                    <span>Takeoff</span>
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onClick={() => {
-                      console.log("Insert Return to Launch at:", clickedGpsCoords)
-                      setClicked(false)
-                      setShowSubmenu(false)
-                    }}
-                  >
-                    <span>Return to Launch</span>
-                  </ContextMenuItem>
-                </div>
-              )}
-            </div>
-
-            {/* Delete Command */}
-            <ContextMenuItem
-              onClick={() => {
-                console.log("Delete command at:", clickedGpsCoords)
-                setClicked(false)
-              }}
-            >
-              <div className="w-full flex justify-between gap-2">
-                <span>Delete Command</span>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M7 21q-.825 0-1.412-.587T5 19V6H4V4h5V3h6v1h5v2h-1v13q0 .825-.587 1.413T17 21zm2-4h2V8H9zm4 0h2V8h-2z"
-                  />
-                </svg>
-              </div>
-            </ContextMenuItem>
-          </div>
-        )}
+        <MissionContextMenuOverlay ctx={ctx} />
       </Map>
     </div>
   )
