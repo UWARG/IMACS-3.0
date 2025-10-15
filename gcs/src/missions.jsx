@@ -43,18 +43,156 @@ export default function Missions() {
 
   const [activeTab, setActiveTab] = useState("mission")
 
-  // Mission
+  // Mission - Test data for development
   const [missionItems, setMissionItems] = useSessionStorage({
     key: "missionItems",
-    defaultValue: [],
+    defaultValue: [
+      {
+        id: uuidv4(),
+        seq: 0,
+        command: 16, // MAV_CMD_NAV_WAYPOINT
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 37.7749, // San Francisco latitude
+        y: -122.4194, // San Francisco longitude
+        z: 100.0, // altitude
+      },
+      {
+        id: uuidv4(),
+        seq: 1,
+        command: 16, // MAV_CMD_NAV_WAYPOINT
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 49.2827, // British Columbia latitude
+        y: -123.1207, // British Columbia longitude
+        z: 150.0, // altitude
+      }
+    ],
   })
   const [fenceItems, setFenceItems] = useSessionStorage({
     key: "fenceItems",
-    defaultValue: [],
+    defaultValue: [
+      {
+        id: uuidv4(),
+        seq: 0,
+        command: 500, // MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 37.7849, // Fence vertex 1 - slightly north of SF
+        y: -122.4094, // Fence vertex 1 - slightly east of SF
+        z: 200.0, // max altitude
+      },
+      {
+        id: uuidv4(),
+        seq: 1,
+        command: 500, // MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 37.7649, // Fence vertex 2 - slightly south of SF
+        y: -122.4094, // Fence vertex 2 - slightly east of SF
+        z: 200.0, // max altitude
+      },
+      {
+        id: uuidv4(),
+        seq: 2,
+        command: 500, // MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 37.7649, // Fence vertex 3 - slightly south of SF
+        y: -122.4294, // Fence vertex 3 - slightly west of SF
+        z: 200.0, // max altitude
+      },
+      {
+        id: uuidv4(),
+        seq: 3,
+        command: 500, // MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 37.7849, // Fence vertex 4 - slightly north of SF
+        y: -122.4294, // Fence vertex 4 - slightly west of SF
+        z: 200.0, // max altitude
+      }
+    ],
   })
   const [rallyItems, setRallyItems] = useSessionStorage({
     key: "rallyItems",
-    defaultValue: [],
+    defaultValue: [
+      {
+        id: uuidv4(),
+        seq: 0,
+        command: 510, // MAV_CMD_NAV_RALLY_POINT
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 37.7849, // Rally point 1 - north of SF
+        y: -122.4094, // Rally point 1 - east of SF
+        z: 120.0, // altitude
+      },
+      {
+        id: uuidv4(),
+        seq: 1,
+        command: 510, // MAV_CMD_NAV_RALLY_POINT
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 37.7649, // Rally point 2 - south of SF
+        y: -122.4294, // Rally point 2 - west of SF
+        z: 130.0, // altitude
+      },
+      {
+        id: uuidv4(),
+        seq: 2,
+        command: 510, // MAV_CMD_NAV_RALLY_POINT
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 37.7749, // Rally point 3 - center SF
+        y: -122.4194, // Rally point 3 - center SF
+        z: 110.0, // altitude
+      }
+    ],
   })
   const [homePosition, setHomePosition] = useSessionStorage({
     key: "homePosition",
@@ -72,6 +210,7 @@ export default function Missions() {
 
   // System data
   const [navControllerOutputData, setNavControllerOutputData] = useState({})
+  const [isUploading, setIsUploading] = useState(false)
 
   const incomingMessageHandler = useCallback(
     () => ({
@@ -135,10 +274,23 @@ export default function Missions() {
       showSuccessNotification(`${data.mission_type} read successfully`)
     })
 
+    socket.on("upload_mission_result", (data) => {
+      console.log("📨 Received upload_mission_result:", data)
+      setIsUploading(false)
+      if (data.success) {
+        console.log("✅ Mission upload successful!")
+        showSuccessNotification(data.message)
+      } else {
+        console.log("❌ Mission upload failed:", data.message)
+        showErrorNotification(data.message)
+      }
+    })
+
     return () => {
       socket.off("incoming_msg")
       socket.off("home_position_result")
       socket.off("current_mission")
+      socket.off("upload_mission_result")
     }
   }, [connected])
 
@@ -158,6 +310,7 @@ export default function Missions() {
     }
     return missionItem
   }
+
 
   function updateMissionItem(updatedMissionItem) {
     setMissionItems((prevItems) =>
@@ -183,7 +336,89 @@ export default function Missions() {
   }
 
   function writeMissionToDrone() {
-    return
+    console.log("🚀 Write Mission Button Pressed!")
+    console.log("📊 Current state:", {
+      connected,
+      isUploading,
+      activeTab,
+      missionItemsCount: missionItems.length,
+      fenceItemsCount: fenceItems.length,
+      rallyItemsCount: rallyItems.length
+    })
+
+    if (!connected) {
+      console.log("❌ Not connected to drone")
+      showErrorNotification("Not connected to drone")
+      return
+    }
+
+    if (isUploading) {
+      console.log("⏳ Mission upload already in progress")
+      showErrorNotification("Mission upload already in progress")
+      return
+    }
+
+    let missionData = []
+    if (activeTab === "mission") {
+      missionData = missionItems
+      console.log("📋 Using mission items:", missionItems)
+    } else if (activeTab === "fence") {
+      missionData = fenceItems
+      console.log("🚧 Using fence items:", fenceItems)
+    } else if (activeTab === "rally") {
+      missionData = rallyItems
+      console.log("📍 Using rally items:", rallyItems)
+    }
+
+    if (missionData.length === 0) {
+      console.log(`❌ No ${activeTab} items to upload`)
+      showErrorNotification(`No ${activeTab} items to upload`)
+      return
+    }
+
+    console.log(`✅ Found ${missionData.length} ${activeTab} items to upload`)
+    setIsUploading(true)
+
+    // Convert mission items to the format expected by the backend
+    const formattedMissionData = missionData.map((item, index) => {
+      const formatted = {
+        seq: index,
+        frame: item.frame || 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        command: item.command || 16, // MAV_CMD_NAV_WAYPOINT
+        current: item.current || 0,
+        autocontinue: item.autocontinue || 1,
+        param1: item.param1 || 0.0,
+        param2: item.param2 || 0.0,
+        param3: item.param3 || 0.0,
+        param4: item.param4 || 0.0,
+        x: item.x || 0, // latitude as integer (1e7 * degrees)
+        y: item.y || 0, // longitude as integer (1e7 * degrees)
+        z: item.z || 0.0, // altitude
+      }
+      console.log(`📝 Formatted item ${index}:`, formatted)
+      return formatted
+    })
+
+    console.log("📤 Sending mission data to backend:", {
+      type: activeTab,
+      mission_data: formattedMissionData
+    })
+
+    socket.emit("upload_mission", {
+      type: activeTab,
+      mission_data: formattedMissionData,
+    })
+
+    console.log("⏰ Setting 30-second timeout for upload...")
+
+    // Set a timeout to handle cases where the upload might hang
+    setTimeout(() => {
+      if (isUploading) {
+        console.log("⏰ Mission upload timed out!")
+        setIsUploading(false)
+        showErrorNotification("Mission upload timed out. Please try again.")
+      }
+    }, 30000) // 30 second timeout
   }
 
   function importMissionFromFile() {
@@ -232,11 +467,55 @@ export default function Missions() {
                     onClick={() => {
                       writeMissionToDrone()
                     }}
-                    disabled={!connected}
+                    disabled={!connected || isUploading}
+                    loading={isUploading}
                     className="grow"
                   >
-                    Write {activeTab}
+                    {isUploading ? `Uploading ${activeTab}...` : `Write ${activeTab}`}
                   </Button>
+                </div>
+
+
+                <Divider className="my-1" />
+
+                {/* Test buttons for validation */}
+                <div className="flex flex-col gap-2">
+                  <div className="text-sm text-gray-400 mb-2">Test All Mission Types:</div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => {
+                        setActiveTab("mission")
+                        console.log("🧪 Testing Mission items:", missionItems.length)
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                    >
+                      Test Mission ({missionItems.length})
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setActiveTab("fence")
+                        console.log("🧪 Testing Fence items:", fenceItems.length)
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                    >
+                      Test Fence ({fenceItems.length})
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setActiveTab("rally")
+                        console.log("🧪 Testing Rally items:", rallyItems.length)
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                    >
+                      Test Rally ({rallyItems.length})
+                    </Button>
+                  </div>
                 </div>
 
                 <Divider className="my-1" />
