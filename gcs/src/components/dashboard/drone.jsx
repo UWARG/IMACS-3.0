@@ -35,11 +35,7 @@ import { AddCommand } from "../spotlight/commandHandler.js"
 
 // Helper imports
 import { showErrorNotification } from "../../helpers/notification.js"
-import {
-    connectedToSocket,
-    setConnected,
-    setConnectedToSocket,
-} from "../../helpers/droneUtils.js"
+
 
 import { socket } from "../../helpers/socket"
 
@@ -50,6 +46,15 @@ const tailwindColors = resolveConfig(tailwindConfig).theme.colors
 
 export default function Drone() {
 
+  const [connected, setConnected] = useSessionStorage({
+          key: "connectedToDrone",
+          defaultValue: false,
+  })
+ const [connectedToSocket, setConnectedToSocket] = useSessionStorage({
+        key: "socketConnection",
+        defaultValue: false,
+  })
+  
     const [opened, { open, close }] = useDisclosure(false)
 
     // Connection to drone
