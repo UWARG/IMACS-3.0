@@ -171,6 +171,7 @@ function MapSectionNonMemo({
           missionItems={missionItemsList}
           editable={currentTab === "mission"}
           dragEndCallback={markerDragEndCallback}
+          onMarkerContextMenu={ctx.handleContextMenu}
         />
 
         {/* Show mission geo-fence MARKERS */}
