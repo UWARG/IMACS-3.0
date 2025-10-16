@@ -11,11 +11,6 @@ import Drone from "../components/dashboard/drone.jsx";
 // Base imports
 import { Link } from "react-router-dom"
 
-import {
-    connected,
-    connectedToSocket,
-} from "../helpers/droneUtils.js"
-
 // Third party imports
 import {
   Button,
