@@ -21,6 +21,7 @@ const MarkerPin = React.memo(
     showOnTop = false,
     draggable = false,
     dragEndCallback = () => {},
+    onContextMenu = null,
   }) => {
     return (
       <Marker
@@ -48,6 +49,25 @@ const MarkerPin = React.memo(
             strokeLinecap="round"
             strokeLinejoin="round"
             className="icon icon-tabler icons-tabler-outline icon-tabler-map-pin h-16 w-16 text-black"
+            onContextMenu={(e) => {
+              if (onContextMenu) {
+                e.preventDefault()
+                e.stopPropagation()
+                // Get the marker's event with proper map coordinates
+                const mapEvent = {
+                  ...e,
+                  lngLat: { lat, lng: lon },
+                  point: { x: e.clientX, y: e.clientY },
+                  originalEvent: {
+                    target: e.target,
+                    clientHeight: window.innerHeight,
+                    clientWidth: window.innerWidth
+                  }
+                }
+                onContextMenu(mapEvent, id)
+              }
+            }}
+            style={{ cursor: onContextMenu ? 'context-menu' : 'default' }}
           >
             <path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />
             {text && (
