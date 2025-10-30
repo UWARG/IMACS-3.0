@@ -18,7 +18,6 @@ export function useMissionContextMenu() {
   const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
   const [savedCoordinates, setSavedCoordinates] = useState([])
   const [showSubmenu, setShowSubmenu] = useState(false)
-  const [clickedWaypointId, setClickedWaypointId] = useState(null)
   const clipboard = useClipboard({ timeout: 500 })
 
   // Position before paint to avoid flash from old to new position
@@ -48,6 +47,7 @@ export function useMissionContextMenu() {
       }
 
       setPoints({ x, y })
+      setIsPositioned(true)
     }
   }, [contextMenuPositionCalculationInfo])
 
@@ -57,6 +57,8 @@ export function useMissionContextMenu() {
       if (clicked && contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
         setClicked(false)
         setShowSubmenu(false)
+        setClickedWaypointId(null)
+        setIsPositioned(false)
       }
     }
 
@@ -66,12 +68,17 @@ export function useMissionContextMenu() {
     }
   }, [clicked])
 
-  const handleContextMenu = (e) => {
+  const handleContextMenu = (e, waypointId = null) => {
     e.preventDefault()
-    e.originalEvent?.preventDefault?.()
-    e.originalEvent?.stopPropagation?.()
     setClicked(true)
     setShowSubmenu(false)
+    setClickedWaypointId(waypointId)
+    
+    // Log waypoint ID if clicked on a waypoint
+    if (waypointId !== null) {
+      console.log("Right-clicked waypoint ID:", waypointId)
+    }
+    
     setClickedGpsCoords(e.lngLat)
     // Identify waypoint id (if right-clicked on a waypoint element)
     const el = e.originalEvent?.target
@@ -83,7 +90,8 @@ export function useMissionContextMenu() {
     setSavedCoordinates(prev => [...prev, {
       lat: e.lngLat.lat,
       lng: e.lngLat.lng,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      waypointId: waypointId
     }])
     setContextMenuPositionCalculationInfo({
       clickedPoint: e.point,
@@ -103,7 +111,6 @@ export function useMissionContextMenu() {
     savedCoordinates,
     showSubmenu,
     setShowSubmenu,
-    clickedWaypointId,
     // refs
     contextMenuRef,
     // handlers
@@ -115,12 +122,12 @@ export function useMissionContextMenu() {
 
 export default function MissionContextMenuOverlay({ ctx }) {
   if (!ctx.clicked) return null
+  
   return (
     <div
       ref={ctx.contextMenuRef}
       className="absolute bg-falcongrey-700 rounded-md p-1 min-w-[180px]"
-      style={{ top: ctx.points?.y ?? -9999, left: ctx.points?.x ?? -9999, visibility: ctx.points ? 'visible' : 'hidden' }}
-      key={`${ctx.points?.x ?? 0}-${ctx.points?.y ?? 0}`}
+      style={{ top: ctx.points.y, left: ctx.points.x }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -238,7 +245,7 @@ export default function MissionContextMenuOverlay({ ctx }) {
       <ContextMenuItem
         onClick={(e) => {
           e.stopPropagation()
-          console.log("Delete command: waypointId=", ctx.clickedWaypointId, " at:", ctx.clickedGpsCoords)
+          console.log("Delete command at:", ctx.clickedGpsCoords)
           ctx.setClicked(false)
         }}
       >
