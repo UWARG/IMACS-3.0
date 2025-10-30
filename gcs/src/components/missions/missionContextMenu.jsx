@@ -1,5 +1,5 @@
 // Base imports
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 // Hooks and helpers
 import { useClipboard } from "@mantine/hooks"
@@ -18,9 +18,11 @@ export function useMissionContextMenu() {
   const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
   const [savedCoordinates, setSavedCoordinates] = useState([])
   const [showSubmenu, setShowSubmenu] = useState(false)
+  const [clickedWaypointId, setClickedWaypointId] = useState(null)
   const clipboard = useClipboard({ timeout: 500 })
 
-  useEffect(() => {
+  // Position before paint to avoid flash from old to new position
+  useLayoutEffect(() => {
     if (contextMenuRef.current && contextMenuPositionCalculationInfo) {
       const contextMenuWidth = Math.round(
         contextMenuRef.current.getBoundingClientRect().width,
@@ -66,9 +68,17 @@ export function useMissionContextMenu() {
 
   const handleContextMenu = (e) => {
     e.preventDefault()
+    e.originalEvent?.preventDefault?.()
+    e.originalEvent?.stopPropagation?.()
     setClicked(true)
     setShowSubmenu(false)
     setClickedGpsCoords(e.lngLat)
+    // Identify waypoint id (if right-clicked on a waypoint element)
+    const el = e.originalEvent?.target
+    const idEl = el?.closest?.('[data-waypoint-id], [data-id]')
+    const waypointId = idEl?.dataset?.waypointId ?? idEl?.dataset?.id ?? null
+    setClickedWaypointId(waypointId ?? null)
+    console.log('Right-click waypoint id:', waypointId ?? null)
     // Save coordinates for future use
     setSavedCoordinates(prev => [...prev, {
       lat: e.lngLat.lat,
@@ -93,6 +103,7 @@ export function useMissionContextMenu() {
     savedCoordinates,
     showSubmenu,
     setShowSubmenu,
+    clickedWaypointId,
     // refs
     contextMenuRef,
     // handlers
@@ -108,7 +119,8 @@ export default function MissionContextMenuOverlay({ ctx }) {
     <div
       ref={ctx.contextMenuRef}
       className="absolute bg-falcongrey-700 rounded-md p-1 min-w-[180px]"
-      style={{ top: ctx.points.y, left: ctx.points.x }}
+      style={{ top: ctx.points?.y ?? -9999, left: ctx.points?.x ?? -9999, visibility: ctx.points ? 'visible' : 'hidden' }}
+      key={`${ctx.points?.x ?? 0}-${ctx.points?.y ?? 0}`}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -226,7 +238,7 @@ export default function MissionContextMenuOverlay({ ctx }) {
       <ContextMenuItem
         onClick={(e) => {
           e.stopPropagation()
-          console.log("Delete command at:", ctx.clickedGpsCoords)
+          console.log("Delete command: waypointId=", ctx.clickedWaypointId, " at:", ctx.clickedGpsCoords)
           ctx.setClicked(false)
         }}
       >

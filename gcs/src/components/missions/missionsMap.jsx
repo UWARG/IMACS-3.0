@@ -86,6 +86,26 @@ function MapSectionNonMemo({
 
   const ctx = useMissionContextMenu()
 
+  // Disable map drag-pan while right mouse is pressed to prioritize context menu
+  const [isRightMouseDown, setIsRightMouseDown] = useState(false)
+
+  const handleMouseDown = (e) => {
+    // e.button === 2 => right mouse in React synthetic events
+    if (e.button === 2) {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsRightMouseDown(true)
+    }
+  }
+
+  const handleMouseUp = (e) => {
+    if (e.button === 2) {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsRightMouseDown(false)
+    }
+  }
+
   useEffect(() => {
     return () => {}
   }, [connected])
@@ -142,6 +162,9 @@ function MapSectionNonMemo({
         attributionControl={false}
         dragRotate={false}
         touchRotate={false}
+        dragPan={!isRightMouseDown}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
         onMoveEnd={(newViewState) =>
           setInitialViewState({
             latitude: newViewState.viewState.latitude,
