@@ -7,11 +7,10 @@
 */
 
 // Base imports
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useState } from "react"
 
 // Maplibre and mantine imports
 import {
-  useClipboard,
   useLocalStorage,
   usePrevious,
   useSessionStorage,
@@ -22,17 +21,15 @@ import Map from "react-map-gl/maplibre"
 // Helper scripts
 import { intToCoord } from "../../helpers/dataFormatters"
 import { filterMissionItems } from "../../helpers/filterMissions"
-import { showNotification } from "../../helpers/notification"
 import { useSettings } from "../../helpers/settings"
 
 // Other dashboard imports
-import ContextMenuItem from "../mapComponents/contextMenuItem"
+import MissionContextMenuOverlay, { useMissionContextMenu } from "./missionContextMenu"
 import DrawLineCoordinates from "../mapComponents/drawLineCoordinates"
 import DroneMarker from "../mapComponents/droneMarker"
 import HomeMarker from "../mapComponents/homeMarker"
 import MarkerPin from "../mapComponents/markerPin"
 import MissionItems from "../mapComponents/missionItems"
-import useContextMenu from "../mapComponents/useContextMenu"
 
 // Tailwind styling
 import resolveConfig from "tailwindcss/resolveConfig"
@@ -87,15 +84,27 @@ function MapSectionNonMemo({
   )
   const [filteredMissionItems, setFilteredMissionItems] = useState([])
 
-  const contextMenuRef = useRef()
-  const { clicked, setClicked, points, setPoints } = useContextMenu()
-  const [
-    contextMenuPositionCalculationInfo,
-    setContextMenuPositionCalculationInfo,
-  ] = useState()
-  const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
+  const ctx = useMissionContextMenu()
 
-  const clipboard = useClipboard({ timeout: 500 })
+  // Disable map drag-pan while right mouse is pressed to prioritize context menu
+  const [isRightMouseDown, setIsRightMouseDown] = useState(false)
+
+  const handleMouseDown = (e) => {
+    // e.button === 2 => right mouse in React synthetic events
+    if (e.button === 2) {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsRightMouseDown(true)
+    }
+  }
+
+  const handleMouseUp = (e) => {
+    if (e.button === 2) {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsRightMouseDown(false)
+    }
+  }
 
   useEffect(() => {
     return () => {}
@@ -120,34 +129,7 @@ function MapSectionNonMemo({
     setMissionItemsList(missionItems.mission_items)
   }, [missionItems])
 
-  useEffect(() => {
-    if (contextMenuRef.current) {
-      const contextMenuWidth = Math.round(
-        contextMenuRef.current.getBoundingClientRect().width,
-      )
-      const contextMenuHeight = Math.round(
-        contextMenuRef.current.getBoundingClientRect().height,
-      )
-      let x = contextMenuPositionCalculationInfo.clickedPoint.x
-      let y = contextMenuPositionCalculationInfo.clickedPoint.y
-
-      if (
-        contextMenuWidth + contextMenuPositionCalculationInfo.clickedPoint.x >
-        contextMenuPositionCalculationInfo.canvasSize.width
-      ) {
-        x = contextMenuPositionCalculationInfo.clickedPoint.x - contextMenuWidth
-      }
-      if (
-        contextMenuHeight + contextMenuPositionCalculationInfo.clickedPoint.y >
-        contextMenuPositionCalculationInfo.canvasSize.height
-      ) {
-        y =
-          contextMenuPositionCalculationInfo.clickedPoint.y - contextMenuHeight
-      }
-
-      setPoints({ x, y })
-    }
-  }, [contextMenuPositionCalculationInfo])
+  // Context menu positioning is handled inside useMissionContextMenu
 
   useEffect(() => {
     // center map on home point only on first instance of home point being
@@ -169,6 +151,8 @@ function MapSectionNonMemo({
     }
   }, [homePosition])
 
+  // Context menu close logic is handled inside useMissionContextMenu
+
   return (
     <div className="w-initial h-full" id="map">
       <Map
@@ -178,6 +162,9 @@ function MapSectionNonMemo({
         attributionControl={false}
         dragRotate={false}
         touchRotate={false}
+        dragPan={!isRightMouseDown}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
         onMoveEnd={(newViewState) =>
           setInitialViewState({
             latitude: newViewState.viewState.latitude,
@@ -186,18 +173,7 @@ function MapSectionNonMemo({
           })
         }
         onDragStart={onDragstart}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          setClicked(true)
-          setClickedGpsCoords(e.lngLat)
-          setContextMenuPositionCalculationInfo({
-            clickedPoint: e.point,
-            canvasSize: {
-              height: e.originalEvent.target.clientHeight,
-              width: e.originalEvent.target.clientWidth,
-            },
-          })
-        }}
+        onContextMenu={ctx.handleContextMenu}
         cursor="default"
       >
         {/* Show marker on map if the position is set */}
@@ -218,6 +194,7 @@ function MapSectionNonMemo({
           missionItems={missionItemsList}
           editable={currentTab === "mission"}
           dragEndCallback={markerDragEndCallback}
+          onMarkerContextMenu={ctx.handleContextMenu}
         />
 
         {/* Show mission geo-fence MARKERS */}
@@ -291,41 +268,7 @@ function MapSectionNonMemo({
           />
         )}
 
-        {clicked && (
-          <div
-            ref={contextMenuRef}
-            className="absolute bg-falcongrey-700 rounded-md p-1"
-            style={{ top: points.y, left: points.x }}
-          >
-            <ContextMenuItem
-              onClick={() => {
-                clipboard.copy(
-                  `${clickedGpsCoords.lat}, ${clickedGpsCoords.lng}`,
-                )
-                showNotification("Copied to clipboard")
-              }}
-            >
-              <div className="w-full flex justify-between gap-2">
-                <p>
-                  {clickedGpsCoords.lat.toFixed(coordsFractionDigits)},{" "}
-                  {clickedGpsCoords.lng.toFixed(coordsFractionDigits)}
-                </p>
-                <svg
-                  className="relative -right-1"
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M9 18q-.825 0-1.412-.587T7 16V4q0-.825.588-1.412T9 2h9q.825 0 1.413.588T20 4v12q0 .825-.587 1.413T18 18zm0-2h9V4H9zm-4 6q-.825 0-1.412-.587T3 20V7q0-.425.288-.712T4 6t.713.288T5 7v13h10q.425 0 .713.288T16 21t-.288.713T15 22zm4-6V4z"
-                  />
-                </svg>
-              </div>
-            </ContextMenuItem>
-          </div>
-        )}
+        <MissionContextMenuOverlay ctx={ctx} />
       </Map>
     </div>
   )
