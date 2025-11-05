@@ -337,3 +337,8 @@ function propsAreEqual(prev, next) {
 const MissionsMapSection = React.memo(MapSectionNonMemo, propsAreEqual)
 
 export default MissionsMapSection
+
+
+
+///fixed file
+
