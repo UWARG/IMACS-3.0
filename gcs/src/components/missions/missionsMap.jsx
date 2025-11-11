@@ -20,7 +20,7 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import Map from "react-map-gl/maplibre"
 
 // Helper scripts
-import { intToCoord } from "../../helpers/dataFormatters"
+import { intToCoord, coordToInt } from "../../helpers/dataFormatters"
 import { filterMissionItems } from "../../helpers/filterMissions"
 import { showNotification } from "../../helpers/notification"
 import { useSettings } from "../../helpers/settings"
@@ -33,6 +33,7 @@ import HomeMarker from "../mapComponents/homeMarker"
 import MarkerPin from "../mapComponents/markerPin"
 import MissionItems from "../mapComponents/missionItems"
 import useContextMenu from "../mapComponents/useContextMenu"
+import ContextSubmenu from "../mapComponents/contextSubmenu"
 
 // Tailwind styling
 import resolveConfig from "tailwindcss/resolveConfig"
@@ -148,6 +149,68 @@ function MapSectionNonMemo({
       setPoints({ x, y })
     }
   }, [contextMenuPositionCalculationInfo])
+
+  function handleInsertCommand(commandId, label) {
+    setMissionItemsList((prev) => {
+      const nextSeq =
+        prev.length > 0
+          ? Math.max(...prev.map((i) => (isNaN(i.seq) ? 0 : i.seq))) + 1
+          : 1
+
+      const newItem = {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        seq: nextSeq,
+        command: commandId,
+        x: coordToInt(clickedGpsCoords.lat),
+        y: coordToInt(clickedGpsCoords.lng),
+        z: 0,
+      }
+
+      return [...prev, newItem]
+    })
+
+    setClicked(false)
+    if (label) showNotification(`Inserted ${label}`)
+  }
+
+  function handleDeleteNearest() {
+    if (!filteredMissionItems || filteredMissionItems.length === 0) {
+      setClicked(false)
+      showNotification("No mission items to delete")
+      return
+    }
+
+    const clickLat = clickedGpsCoords.lat
+    const clickLng = clickedGpsCoords.lng
+
+    let nearestId = undefined
+    let minDist = Number.POSITIVE_INFINITY
+
+    for (const item of filteredMissionItems) {
+      const itemLat = intToCoord(item.x)
+      const itemLng = intToCoord(item.y)
+      const dLat = clickLat - itemLat
+      const dLng = clickLng - itemLng
+      const dist = dLat * dLat + dLng * dLng
+      if (dist < minDist) {
+        minDist = dist
+        nearestId = item.id
+      }
+    }
+
+    if (nearestId === undefined) {
+      setClicked(false)
+      return
+    }
+
+    setMissionItemsList((prev) => {
+      const remaining = prev.filter((it) => it.id !== nearestId)
+      return remaining.map((it, idx) => ({ ...it, seq: idx + 1 }))
+    })
+
+    setClicked(false)
+    showNotification("Deleted nearest item")
+  }
 
   useEffect(() => {
     // center map on home point only on first instance of home point being
@@ -296,6 +359,10 @@ function MapSectionNonMemo({
             ref={contextMenuRef}
             className="absolute bg-falcongrey-700 rounded-md p-1"
             style={{ top: points.y, left: points.x }}
+            onMouseDown={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+            }}
           >
             <ContextMenuItem
               onClick={() => {
@@ -323,6 +390,73 @@ function MapSectionNonMemo({
                   />
                 </svg>
               </div>
+            </ContextMenuItem>
+
+            <ContextSubmenu label="Insert">
+              <ContextMenuItem
+                onClick={() => {
+                  handleInsertCommand(16, "Waypoint")
+                }}
+              >
+                Waypoint
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => {
+                  handleInsertCommand(82, "Spline Waypoint")
+                }}
+              >
+                Spline Waypoint
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => {
+                  handleInsertCommand(22, "Takeoff")
+                }}
+              >
+                Takeoff
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => {
+                  handleInsertCommand(21, "Land")
+                }}
+              >
+                Land
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => {
+                  handleInsertCommand(20, "Return To Launch")
+                }}
+              >
+                Return To Launch
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => {
+                  handleInsertCommand(17, "Loiter (Unlim)")
+                }}
+              >
+                Loiter (Unlim)
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => {
+                  handleInsertCommand(18, "Loiter (Turns)")
+                }}
+              >
+                Loiter (Turns)
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={() => {
+                  handleInsertCommand(19, "Loiter (Time)")
+                }}
+              >
+                Loiter (Time)
+              </ContextMenuItem>
+            </ContextSubmenu>
+
+            <ContextMenuItem
+              onClick={() => {
+                handleDeleteNearest()
+              }}
+            >
+              Delete
             </ContextMenuItem>
           </div>
         )}
