@@ -197,66 +197,12 @@ function MapSectionNonMemo({
     }
   }, [contextMenuPositionCalculationInfo])
 
-  function handleInsertCommand(commandId, label) {
-    setMissionItemsList((prev) => {
-      const nextSeq =
-        prev.length > 0
-          ? Math.max(...prev.map((i) => (isNaN(i.seq) ? 0 : i.seq))) + 1
-          : 1
-
-      const newItem = {
-        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        seq: nextSeq,
-        command: commandId,
-        x: coordToInt(clickedGpsCoords.lat),
-        y: coordToInt(clickedGpsCoords.lng),
-        z: 0,
-      }
-
-      return [...prev, newItem]
-    })
-
+  function handleInsertCommand() {
     setIsMenuOpen(false)
-    if (label) showNotification(`Inserted ${label}`)
   }
 
   function handleDeleteNearest() {
-    if (!filteredMissionItems || filteredMissionItems.length === 0) {
-      setIsMenuOpen(false)
-      showNotification("No mission items to delete")
-      return
-    }
-
-    const clickLat = clickedGpsCoords.lat
-    const clickLng = clickedGpsCoords.lng
-
-    let nearestId = undefined
-    let minDist = Number.POSITIVE_INFINITY
-
-    for (const item of filteredMissionItems) {
-      const itemLat = intToCoord(item.x)
-      const itemLng = intToCoord(item.y)
-      const dLat = clickLat - itemLat
-      const dLng = clickLng - itemLng
-      const dist = dLat * dLat + dLng * dLng
-      if (dist < minDist) {
-        minDist = dist
-        nearestId = item.id
-      }
-    }
-
-    if (nearestId === undefined) {
-      setIsMenuOpen(false)
-      return
-    }
-
-    setMissionItemsList((prev) => {
-      const remaining = prev.filter((it) => it.id !== nearestId)
-      return remaining.map((it, idx) => ({ ...it, seq: idx + 1 }))
-    })
-
     setIsMenuOpen(false)
-    showNotification("Deleted nearest item")
   }
 
   useEffect(() => {
@@ -336,7 +282,7 @@ function MapSectionNonMemo({
               colour={tailwindColors.yellow[400]}
               text={item.seq}
               tooltipText={item.z ? `Alt: ${item.z}` : null}
-              draggable={false}
+              draggable={currentTab === "mission"}
               dragEndCallback={markerDragEndCallback}
             />
           )
@@ -466,10 +412,11 @@ function MapSectionNonMemo({
               onMouseLeave={() => setShowInsert(false)}
             >
               <button
-                className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded"
+                className="flex w-full items-center justify-between px-2 py-1 hover:bg-falcongrey-600 rounded"
                 onClick={() => setShowInsert((v) => !v)}
               >
-                Insert ▸
+                <span>Insert</span>
+                <span className="ml-4">▸</span>
               </button>
               {showInsert && (
                 <div className="absolute left-full top-0 bg-falcongrey-700 rounded-md p-1 shadow-lg">
@@ -480,14 +427,6 @@ function MapSectionNonMemo({
                     className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
                   >
                     Waypoint
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleInsertCommand(82, "Spline Waypoint")
-                    }}
-                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
-                  >
-                    Spline Waypoint
                   </button>
                   <button
                     onClick={() => {
@@ -504,38 +443,6 @@ function MapSectionNonMemo({
                     className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
                   >
                     Land
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleInsertCommand(20, "Return To Launch")
-                    }}
-                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
-                  >
-                    Return To Launch
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleInsertCommand(17, "Loiter (Unlim)")
-                    }}
-                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
-                  >
-                    Loiter (Unlim)
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleInsertCommand(18, "Loiter (Turns)")
-                    }}
-                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
-                  >
-                    Loiter (Turns)
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleInsertCommand(19, "Loiter (Time)")
-                    }}
-                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
-                  >
-                    Loiter (Time)
                   </button>
                 </div>
               )}
