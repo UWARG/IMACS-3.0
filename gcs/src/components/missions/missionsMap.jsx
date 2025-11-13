@@ -20,19 +20,16 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import Map from "react-map-gl/maplibre"
 
 // Helper scripts
-import { intToCoord } from "../../helpers/dataFormatters"
+import { intToCoord, coordToInt } from "../../helpers/dataFormatters"
 import { filterMissionItems } from "../../helpers/filterMissions"
 import { showNotification } from "../../helpers/notification"
 import { useSettings } from "../../helpers/settings"
 
 // Other dashboard imports
-import ContextMenuItem from "../mapComponents/contextMenuItem"
 import DrawLineCoordinates from "../mapComponents/drawLineCoordinates"
 import DroneMarker from "../mapComponents/droneMarker"
 import HomeMarker from "../mapComponents/homeMarker"
 import MarkerPin from "../mapComponents/markerPin"
-import MissionItems from "../mapComponents/missionItems"
-import useContextMenu from "../mapComponents/useContextMenu"
 
 // Tailwind styling
 import resolveConfig from "tailwindcss/resolveConfig"
@@ -88,7 +85,9 @@ function MapSectionNonMemo({
   const [filteredMissionItems, setFilteredMissionItems] = useState([])
 
   const contextMenuRef = useRef()
-  const { clicked, setClicked, points, setPoints } = useContextMenu()
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 })
+  const [showInsert, setShowInsert] = useState(false)
   const [
     contextMenuPositionCalculationInfo,
     setContextMenuPositionCalculationInfo,
@@ -96,6 +95,26 @@ function MapSectionNonMemo({
   const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
 
   const clipboard = useClipboard({ timeout: 500 })
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === "Escape") setIsMenuOpen(false)
+    }
+    function onMouseDown(e) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+        setIsMenuOpen(false)
+        setShowInsert(false)
+      }
+    }
+    if (isMenuOpen) {
+      document.addEventListener("keydown", onKeyDown)
+      document.addEventListener("mousedown", onMouseDown)
+    }
+    return () => {
+      document.removeEventListener("keydown", onKeyDown)
+      document.removeEventListener("mousedown", onMouseDown)
+    }
+  }, [isMenuOpen])
 
   useEffect(() => {
     return () => {}
@@ -117,10 +136,39 @@ function MapSectionNonMemo({
   }, [missionItemsList])
 
   useEffect(() => {
-    setMissionItemsList(missionItems.mission_items)
+    setMissionItemsList((prev) => {
+      const previousList = Array.isArray(prev) ? prev : []
+      const incomingList = Array.isArray(missionItems?.mission_items)
+        ? missionItems.mission_items
+        : []
+
+      // Preserve locally added items (id starts with "local-")
+      const localItems = previousList.filter(
+        (it) => String(it?.id ?? "").startsWith("local-"),
+      )
+      const remoteItems = incomingList.filter(
+        (it) => !String(it?.id ?? "").startsWith("local-"),
+      )
+
+      // Ensure local items have seq numbers after remote items to avoid clashes
+      const maxRemoteSeq = remoteItems.reduce((max, it) => {
+        const seq = isNaN(it?.seq) ? 0 : Number(it.seq)
+        return seq > max ? seq : max
+      }, 0)
+      const adjustedLocals = localItems.map((it, idx) => {
+        const seqNum = isNaN(it?.seq) ? 0 : Number(it.seq)
+        if (seqNum <= maxRemoteSeq) {
+          return { ...it, seq: maxRemoteSeq + idx + 1 }
+        }
+        return it
+      })
+
+      return [...remoteItems, ...adjustedLocals]
+    })
   }, [missionItems])
 
   useEffect(() => {
+    if (!contextMenuPositionCalculationInfo) return
     if (contextMenuRef.current) {
       const contextMenuWidth = Math.round(
         contextMenuRef.current.getBoundingClientRect().width,
@@ -145,9 +193,71 @@ function MapSectionNonMemo({
           contextMenuPositionCalculationInfo.clickedPoint.y - contextMenuHeight
       }
 
-      setPoints({ x, y })
+      setMenuPosition({ x, y })
     }
   }, [contextMenuPositionCalculationInfo])
+
+  function handleInsertCommand(commandId, label) {
+    setMissionItemsList((prev) => {
+      const nextSeq =
+        prev.length > 0
+          ? Math.max(...prev.map((i) => (isNaN(i.seq) ? 0 : i.seq))) + 1
+          : 1
+
+      const newItem = {
+        id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        seq: nextSeq,
+        command: commandId,
+        x: coordToInt(clickedGpsCoords.lat),
+        y: coordToInt(clickedGpsCoords.lng),
+        z: 0,
+      }
+
+      return [...prev, newItem]
+    })
+
+    setIsMenuOpen(false)
+    if (label) showNotification(`Inserted ${label}`)
+  }
+
+  function handleDeleteNearest() {
+    if (!filteredMissionItems || filteredMissionItems.length === 0) {
+      setIsMenuOpen(false)
+      showNotification("No mission items to delete")
+      return
+    }
+
+    const clickLat = clickedGpsCoords.lat
+    const clickLng = clickedGpsCoords.lng
+
+    let nearestId = undefined
+    let minDist = Number.POSITIVE_INFINITY
+
+    for (const item of filteredMissionItems) {
+      const itemLat = intToCoord(item.x)
+      const itemLng = intToCoord(item.y)
+      const dLat = clickLat - itemLat
+      const dLng = clickLng - itemLng
+      const dist = dLat * dLat + dLng * dLng
+      if (dist < minDist) {
+        minDist = dist
+        nearestId = item.id
+      }
+    }
+
+    if (nearestId === undefined) {
+      setIsMenuOpen(false)
+      return
+    }
+
+    setMissionItemsList((prev) => {
+      const remaining = prev.filter((it) => it.id !== nearestId)
+      return remaining.map((it, idx) => ({ ...it, seq: idx + 1 }))
+    })
+
+    setIsMenuOpen(false)
+    showNotification("Deleted nearest item")
+  }
 
   useEffect(() => {
     // center map on home point only on first instance of home point being
@@ -188,7 +298,8 @@ function MapSectionNonMemo({
         onDragStart={onDragstart}
         onContextMenu={(e) => {
           e.preventDefault()
-          setClicked(true)
+          setIsMenuOpen(true)
+          setShowInsert(false)
           setClickedGpsCoords(e.lngLat)
           setContextMenuPositionCalculationInfo({
             clickedPoint: e.point,
@@ -214,11 +325,35 @@ function MapSectionNonMemo({
             />
           )}
 
-        <MissionItems
-          missionItems={missionItemsList}
-          editable={currentTab === "mission"}
-          dragEndCallback={markerDragEndCallback}
-        />
+        {/* Mission items as markers only (no connecting lines) */}
+        {filteredMissionItems.map((item, index) => {
+          return (
+            <MarkerPin
+              key={index}
+              id={item.id}
+              lat={intToCoord(item.x)}
+              lon={intToCoord(item.y)}
+              colour={tailwindColors.yellow[400]}
+              text={item.seq}
+              tooltipText={item.z ? `Alt: ${item.z}` : null}
+              draggable={false}
+              dragEndCallback={markerDragEndCallback}
+            />
+          )
+        })}
+
+        {/* Polyline connecting mission items in sequence (no wrap-around) */}
+        {(() => {
+          const lineCoords = [...filteredMissionItems]
+            .sort((a, b) => (isNaN(a?.seq) ? 0 : a.seq) - (isNaN(b?.seq) ? 0 : b.seq))
+            .map((it) => [intToCoord(it.y), intToCoord(it.x)])
+          return lineCoords.length > 1 ? (
+            <DrawLineCoordinates
+              coordinates={lineCoords}
+              colour={tailwindColors.yellow[400]}
+            />
+          ) : null
+        })()}
 
         {/* Show mission geo-fence MARKERS */}
         {missionItems.fence_items.map((item, index) => {
@@ -282,28 +417,28 @@ function MapSectionNonMemo({
           <HomeMarker
             lat={intToCoord(homePosition.lat)}
             lon={intToCoord(homePosition.lon)}
-            lineTo={
-              filteredMissionItems.length > 0 && [
-                intToCoord(filteredMissionItems[0].y),
-                intToCoord(filteredMissionItems[0].x),
-              ]
-            }
           />
         )}
 
-        {clicked && (
+        {isMenuOpen && (
           <div
             ref={contextMenuRef}
             className="absolute bg-falcongrey-700 rounded-md p-1"
-            style={{ top: points.y, left: points.x }}
+            style={{ top: menuPosition.y, left: menuPosition.x }}
+            onMouseDown={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+            }}
           >
-            <ContextMenuItem
+            <button
               onClick={() => {
                 clipboard.copy(
                   `${clickedGpsCoords.lat}, ${clickedGpsCoords.lng}`,
                 )
                 showNotification("Copied to clipboard")
+                setIsMenuOpen(false)
               }}
+              className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded"
             >
               <div className="w-full flex justify-between gap-2">
                 <p>
@@ -323,7 +458,97 @@ function MapSectionNonMemo({
                   />
                 </svg>
               </div>
-            </ContextMenuItem>
+            </button>
+
+            <div
+              className="relative"
+              onMouseEnter={() => setShowInsert(true)}
+              onMouseLeave={() => setShowInsert(false)}
+            >
+              <button
+                className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded"
+                onClick={() => setShowInsert((v) => !v)}
+              >
+                Insert ▸
+              </button>
+              {showInsert && (
+                <div className="absolute left-full top-0 bg-falcongrey-700 rounded-md p-1 shadow-lg">
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(16, "Waypoint")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Waypoint
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(82, "Spline Waypoint")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Spline Waypoint
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(22, "Takeoff")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Takeoff
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(21, "Land")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Land
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(20, "Return To Launch")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Return To Launch
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(17, "Loiter (Unlim)")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Loiter (Unlim)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(18, "Loiter (Turns)")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Loiter (Turns)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(19, "Loiter (Time)")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Loiter (Time)
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                handleDeleteNearest()
+              }}
+              className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded"
+            >
+              Delete
+            </button>
           </div>
         )}
       </Map>
