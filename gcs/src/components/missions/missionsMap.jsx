@@ -93,6 +93,7 @@ function MapSectionNonMemo({
     setContextMenuPositionCalculationInfo,
   ] = useState()
   const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
+  const [disableMarkerDrag, setDisableMarkerDrag] = useState(false)
 
   const clipboard = useClipboard({ timeout: 500 })
 
@@ -119,6 +120,51 @@ function MapSectionNonMemo({
   useEffect(() => {
     return () => {}
   }, [connected])
+
+  // Re-enable marker dragging on global pointer up
+  useEffect(() => {
+    const onPointerUp = () => setDisableMarkerDrag(false)
+    window.addEventListener("pointerup", onPointerUp, true)
+    return () => {
+      window.removeEventListener("pointerup", onPointerUp, true)
+    }
+  }, [])
+
+  // Ensure right-click on markers opens context menu instead of initiating drag
+  useEffect(() => {
+    const mapObj = passedRef?.current?.getMap?.()
+    if (!mapObj) return
+    const container = mapObj.getContainer()
+
+    const blockRightClickDrag = (ev) => {
+      const isRightButton =
+        ev?.button === 2 || ev?.which === 3 || ev?.buttons === 2
+      if (!isRightButton) return
+      const target = ev.target
+      const insideMap =
+        container &&
+        (target === container || container.contains(target))
+      // If right click originated on a marker, block drag initiation
+      const isMarker =
+        !!(
+          target?.closest &&
+          (target.closest(".maplibregl-marker") ||
+            target.closest(".mapboxgl-marker") ||
+            target.closest(".icon-tabler-map-pin"))
+        )
+      if (insideMap && isMarker) {
+        ev.stopPropagation()
+        ev.preventDefault()
+      }
+    }
+
+    document.addEventListener("mousedown", blockRightClickDrag, true)
+    document.addEventListener("pointerdown", blockRightClickDrag, true)
+    return () => {
+      document.removeEventListener("mousedown", blockRightClickDrag, true)
+      document.removeEventListener("pointerdown", blockRightClickDrag, true)
+    }
+  }, [passedRef])
 
   useEffect(() => {
     // Check latest data point is valid
@@ -205,6 +251,25 @@ function MapSectionNonMemo({
     setIsMenuOpen(false)
   }
 
+  function openMenuAtClient(lat, lon, clientX, clientY) {
+    const mapObj = passedRef?.current?.getMap?.()
+    const container = mapObj?.getContainer?.()
+    const rect = container?.getBoundingClientRect?.()
+    const x = rect ? clientX - rect.left : clientX
+    const y = rect ? clientY - rect.top : clientY
+    setShowInsert(false)
+    setClickedGpsCoords({ lat, lng: lon })
+    setMenuPosition({ x, y })
+    setIsMenuOpen(true)
+    setContextMenuPositionCalculationInfo({
+      clickedPoint: { x, y },
+      canvasSize: {
+        width: container?.clientWidth || 0,
+        height: container?.clientHeight || 0,
+      },
+    })
+  }
+
   useEffect(() => {
     // center map on home point only on first instance of home point being
     // received from the drone
@@ -244,9 +309,12 @@ function MapSectionNonMemo({
         onDragStart={onDragstart}
         onContextMenu={(e) => {
           e.preventDefault()
-          setIsMenuOpen(true)
+          setDisableMarkerDrag(true)
           setShowInsert(false)
           setClickedGpsCoords(e.lngLat)
+          // Set position immediately to avoid flashing at previous location
+          setMenuPosition({ x: e.point.x, y: e.point.y })
+          setIsMenuOpen(true)
           setContextMenuPositionCalculationInfo({
             clickedPoint: e.point,
             canvasSize: {
@@ -254,6 +322,22 @@ function MapSectionNonMemo({
               width: e.originalEvent.target.clientWidth,
             },
           })
+        }}
+        onPointerDownCapture={(e) => {
+          // React-level fallback to block right-button drag start on markers
+          const isRightButton =
+            e?.button === 2 || e?.nativeEvent?.which === 3 || e?.nativeEvent?.button === 2
+          if (!isRightButton) return
+          const target = e.target
+          if (
+            target?.closest?.(".maplibregl-marker") ||
+            target?.closest?.(".mapboxgl-marker") ||
+            target?.closest?.(".icon-tabler-map-pin")
+          ) {
+            setDisableMarkerDrag(true)
+            e.stopPropagation()
+            e.preventDefault()
+          }
         }}
         cursor="default"
       >
@@ -282,8 +366,11 @@ function MapSectionNonMemo({
               colour={tailwindColors.yellow[400]}
               text={item.seq}
               tooltipText={item.z ? `Alt: ${item.z}` : null}
-              draggable={currentTab === "mission"}
+              draggable={currentTab === "mission" && !disableMarkerDrag && !isMenuOpen}
               dragEndCallback={markerDragEndCallback}
+              onRightClick={({ lat, lon, clientX, clientY }) =>
+                openMenuAtClient(lat, lon, clientX, clientY)
+              }
             />
           )
         })}
@@ -341,8 +428,11 @@ function MapSectionNonMemo({
               lon={intToCoord(item.y)}
               colour={tailwindColors.purple[400]}
               tooltipText={item.z ? `Alt: ${item.z}` : null}
-              draggable={currentTab === "rally"}
+              draggable={currentTab === "rally" && !disableMarkerDrag && !isMenuOpen}
               dragEndCallback={rallyDragEndCallback}
+              onRightClick={({ lat, lon, clientX, clientY }) =>
+                openMenuAtClient(lat, lon, clientX, clientY)
+              }
             />
           )
         })}
