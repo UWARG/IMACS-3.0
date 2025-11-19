@@ -7,7 +7,7 @@
 */
 
 // Base imports
-import React, { useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 
 // Maplibre and mantine imports
 import {
@@ -38,6 +38,8 @@ const tailwindColors = resolveConfig(tailwindConfig).theme.colors
 
 const coordsFractionDigits = 7
 
+const CLICK_MOVE_THRESHOLD_PX = 5
+
 function MapSectionNonMemo({
   passedRef,
   data,
@@ -50,6 +52,7 @@ function MapSectionNonMemo({
   currentTab,
   markerDragEndCallback,
   rallyDragEndCallback,
+  onAddWaypoint,
   mapId = "dashboard",
 }) {
   const [connected] = useSessionStorage({
@@ -94,8 +97,30 @@ function MapSectionNonMemo({
   ] = useState()
   const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
   const [disableMarkerDrag, setDisableMarkerDrag] = useState(false)
+  const clickCreationStateRef = useRef({
+    isActive: false,
+    startPoint: null,
+    hasMoved: false,
+  })
 
   const clipboard = useClipboard({ timeout: 500 })
+
+  const resetLeftClickTracker = useCallback(() => {
+    clickCreationStateRef.current = {
+      isActive: false,
+      startPoint: null,
+      hasMoved: false,
+    }
+  }, [])
+
+  function startedOnMarker(target) {
+    return !!(
+      target?.closest &&
+      (target.closest(".maplibregl-marker") ||
+        target.closest(".mapboxgl-marker") ||
+        target.closest(".icon-tabler-map-pin"))
+    )
+  }
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -123,7 +148,9 @@ function MapSectionNonMemo({
 
   // Re-enable marker dragging on global pointer up
   useEffect(() => {
-    const onPointerUp = () => setDisableMarkerDrag(false)
+    const onPointerUp = () => {
+      setDisableMarkerDrag(false)
+    }
     window.addEventListener("pointerup", onPointerUp, true)
     return () => {
       window.removeEventListener("pointerup", onPointerUp, true)
@@ -188,28 +215,16 @@ function MapSectionNonMemo({
         ? missionItems.mission_items
         : []
 
-      // Preserve locally added items (id starts with "local-")
-      const localItems = previousList.filter(
-        (it) => String(it?.id ?? "").startsWith("local-"),
-      )
-      const remoteItems = incomingList.filter(
-        (it) => !String(it?.id ?? "").startsWith("local-"),
+      // Use incoming list as source of truth, but preserve any
+      // local items from previous that aren't in incoming yet
+      const incomingIds = new Set(incomingList.map((it) => it.id))
+      const additionalLocalItems = previousList.filter(
+        (it) =>
+          String(it?.id ?? "").startsWith("local-") &&
+          !incomingIds.has(it.id),
       )
 
-      // Ensure local items have seq numbers after remote items to avoid clashes
-      const maxRemoteSeq = remoteItems.reduce((max, it) => {
-        const seq = isNaN(it?.seq) ? 0 : Number(it.seq)
-        return seq > max ? seq : max
-      }, 0)
-      const adjustedLocals = localItems.map((it, idx) => {
-        const seqNum = isNaN(it?.seq) ? 0 : Number(it.seq)
-        if (seqNum <= maxRemoteSeq) {
-          return { ...it, seq: maxRemoteSeq + idx + 1 }
-        }
-        return it
-      })
-
-      return [...remoteItems, ...adjustedLocals]
+      return [...incomingList, ...additionalLocalItems]
     })
   }, [missionItems])
 
@@ -306,7 +321,11 @@ function MapSectionNonMemo({
             zoom: newViewState.viewState.zoom,
           })
         }
-        onDragStart={onDragstart}
+        onDragStart={(event) => {
+          if (typeof onDragstart === "function") {
+            onDragstart(event)
+          }
+        }}
         onContextMenu={(e) => {
           e.preventDefault()
           setDisableMarkerDrag(true)
@@ -339,6 +358,55 @@ function MapSectionNonMemo({
             e.preventDefault()
           }
         }}
+        onMouseDown={(e) => {
+          if (
+            e?.originalEvent?.button !== 0 ||
+            typeof onAddWaypoint !== "function" ||
+            currentTab !== "mission" ||
+            isMenuOpen
+          ) {
+            return
+          }
+          if (startedOnMarker(e.originalEvent.target)) {
+            return
+          }
+          clickCreationStateRef.current = {
+            isActive: true,
+            startPoint: { x: e.point.x, y: e.point.y },
+            hasMoved: false,
+          }
+        }}
+        onMouseMove={(e) => {
+          if (!clickCreationStateRef.current.isActive) return
+          const dx = e.point.x - clickCreationStateRef.current.startPoint.x
+          const dy = e.point.y - clickCreationStateRef.current.startPoint.y
+          const distance = Math.hypot(dx, dy)
+          if (distance > CLICK_MOVE_THRESHOLD_PX) {
+            clickCreationStateRef.current.hasMoved = true
+          }
+        }}
+        onMouseUp={(e) => {
+          if (!clickCreationStateRef.current.isActive) return
+          const { hasMoved, startPoint } = clickCreationStateRef.current
+          const mouseUpMoved =
+            !!startPoint && !!e?.point
+              ? Math.hypot(e.point.x - startPoint.x, e.point.y - startPoint.y)
+              : 0
+          resetLeftClickTracker()
+          if (
+            hasMoved ||
+            mouseUpMoved > CLICK_MOVE_THRESHOLD_PX ||
+            e?.originalEvent?.button !== 0 ||
+            typeof onAddWaypoint !== "function" ||
+            currentTab !== "mission" ||
+            !e?.lngLat ||
+            startedOnMarker(e.originalEvent.target)
+          ) {
+            return
+          }
+          onAddWaypoint({ lat: e.lngLat.lat, lon: e.lngLat.lng })
+        }}
+        onMouseLeave={resetLeftClickTracker}
         cursor="default"
       >
         {/* Show marker on map if the position is set */}
