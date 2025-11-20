@@ -18,7 +18,7 @@ import MissionItemsTable from "./components/missions/missionItemsTable"
 import MissionsMapSection from "./components/missions/missionsMap"
 import RallyItemsTable from "./components/missions/rallyItemsTable"
 import NoDroneConnected from "./components/noDroneConnected"
-import { intToCoord } from "./helpers/dataFormatters"
+import { coordToInt, intToCoord } from "./helpers/dataFormatters"
 import {
   COPTER_MODES_FLIGHT_MODE_MAP,
   MAV_AUTOPILOT_INVALID,
@@ -431,6 +431,47 @@ function saveMissionToFile() {
   showSuccessNotification(`Saved ${activeTab} mission to file`)
 }
 
+  const handleAddWaypointFromMap = useCallback(
+    ({ lat, lon }) => {
+      if (typeof lat !== "number" || typeof lon !== "number") {
+        return
+      }
+
+      setMissionItems((prevItems) => {
+        const safePrev = Array.isArray(prevItems) ? prevItems : []
+        const maxSeq = safePrev.reduce((max, item) => {
+          const seqNum = Number(item?.seq)
+          return Number.isFinite(seqNum) && seqNum > max ? seqNum : max
+        }, -1)
+
+        const lastAltitude =
+          safePrev.length > 0
+            ? safePrev[safePrev.length - 1]?.z ?? 30
+            : 30
+
+        const newWaypoint = {
+          id: `local-${uuidv4()}`,
+          seq: maxSeq + 1,
+          command: 16,
+          frame: 3,
+          current: 0,
+          autocontinue: 1,
+          param1: 0.0,
+          param2: 0.0,
+          param3: 0.0,
+          param4: 0.0,
+          x: coordToInt(lat),
+          y: coordToInt(lon),
+          z: lastAltitude,
+          mission_type: 0,
+        }
+
+        return [...safePrev, newWaypoint]
+      })
+    },
+    [setMissionItems],
+  )
+
 
   return (
     <Layout currentPage="missions">
@@ -539,6 +580,7 @@ function saveMissionToFile() {
                   currentTab={activeTab}
                   markerDragEndCallback={updateMissionItem}
                   rallyDragEndCallback={updateRallyItem}
+                  onAddWaypoint={handleAddWaypointFromMap}
                   mapId="missions"
                 />
               </div>
