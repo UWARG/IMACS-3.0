@@ -71,7 +71,18 @@ export function Commands() {
 
 export function AddCommand(id, command, shortcut = null, macShortcut = null) {
   // Used to expose a command
-  if (commands.find((entry) => entry.id == id) == undefined) {
+  const existingIndex = commands.findIndex((entry) => entry.id == id)
+  
+  if (existingIndex >= 0) {
+    // Update existing command
+    commands[existingIndex] = {
+      id: id,
+      command: command,
+      shortcut: shortcut || commands[existingIndex].shortcut,
+      macShortcut: macShortcut || commands[existingIndex].macShortcut,
+    }
+  } else {
+    // Add new command
     commands.push({
       id: id,
       command: command,
