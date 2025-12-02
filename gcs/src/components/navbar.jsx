@@ -6,7 +6,7 @@
   in the future we may change this so that its loaded in its own component.
 */
 
-import Drone from "./dashboard/droneConnect.jsx";
+import DroneConnect from "./dashboard/droneConnect.jsx";
 
 // Base imports
 import { Link } from "react-router-dom"
@@ -106,16 +106,6 @@ function NavbarContent({ currentPage }) {
 
         {/* Right hand side information */}
         <div className="!ml-auto flex flex-row space-x-4 items-center">
-          {/* Out of date warning */}
-          {false && (
-            <a
-              href="https://github.com/Avis-Drone-Labs/FGCS/releases"
-              target="_blank"
-              className="flex flex-row gap-2 text-red-400 hover:text-red-600"
-            >
-              <IconAlertTriangle /> FGCS out of date
-            </a>
-          )}
 
           {/* Connected to message */}
           <p>
@@ -160,12 +150,9 @@ function NavbarContent({ currentPage }) {
 }
 
 export default function Navbar({ currentPage }) {
-  const linkClassName =
-    "text-md px-2 rounded-sm outline-none focus:text-falconred-400 hover:text-falconred-400 transition-colors delay-50"
-
   return (
     <div className="flex flex-row items-center justify-center py-2 px-2 bg-falcongrey-900">
-      <Drone />
+      <DroneConnect />
       <NavbarContent currentPage={currentPage} />
     </div>
   )

@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react"
+import React, { createContext, useContext, useEffect, useState } from "react"
 import { useLocalStorage, useSessionStorage } from "@mantine/hooks"
 import { socket } from "./socket.js"
 import { showErrorNotification } from "./notification.js"
 
-export function useDroneConnection() {
+const DroneConnectionContext = createContext(null)
+
+export function DroneConnectionProvider({ children }) {
   const [connected, setConnected] = useSessionStorage({
     key: "connectedToDrone",
     defaultValue: false,
@@ -180,7 +182,7 @@ export function useDroneConnection() {
     socket.emit("disconnect_from_drone")
   }
 
-  return {
+  const value = {
     connected,
     connectedToSocket,
     connecting,
@@ -208,4 +210,14 @@ export function useDroneConnection() {
     connectToDrone,
     disconnect,
   }
+
+  return React.createElement(DroneConnectionContext.Provider, { value }, children)
+}
+
+export function useDroneConnection() {
+  const ctx = useContext(DroneConnectionContext)
+  if (!ctx) {
+    throw new Error("useDroneConnection must be used within a DroneConnectionProvider")
+  }
+  return ctx
 }

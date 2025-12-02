@@ -39,7 +39,7 @@ import resolveConfig from "tailwindcss/resolveConfig"
 import tailwindConfig from "../../../tailwind.config.js"
 const tailwindColors = resolveConfig(tailwindConfig).theme.colors
 
-export default function Drone() {
+export default function DroneConnect() {
   const [opened, { open, close }] = useDisclosure(false)
 
   const {
