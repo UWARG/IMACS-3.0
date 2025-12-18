@@ -8,6 +8,7 @@
 
 // Base imports
 import React, { useCallback, useEffect, useRef, useState } from "react"
+import { v4 as uuidv4 } from "uuid"
 
 // Maplibre and mantine imports
 import {
@@ -258,7 +259,44 @@ function MapSectionNonMemo({
     }
   }, [contextMenuPositionCalculationInfo])
 
-  function handleInsertCommand() {
+  function handleInsertCommand(commandId, commandName) {
+    if (typeof onAddWaypoint !== "function" || currentTab !== "mission") {
+      setIsMenuOpen(false)
+      return
+    }
+
+    // Get the last altitude from existing mission items, default to 30
+    const lastAltitude =
+      missionItemsList.length > 0
+        ? missionItemsList[missionItemsList.length - 1]?.z ?? 30
+        : 30
+
+    // Create new mission item at clicked coordinates
+    const maxSeq = missionItemsList.reduce((max, item) => {
+      const seqNum = Number(item?.seq)
+      return Number.isFinite(seqNum) && seqNum > max ? seqNum : max
+    }, -1)
+
+    const newItem = {
+      id: `local-${uuidv4()}`,
+      seq: maxSeq + 1,
+      command: commandId,
+      frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+      current: 0,
+      autocontinue: 1,
+      param1: 0.0,
+      param2: 0.0,
+      param3: 0.0,
+      param4: 0.0,
+      x: coordToInt(clickedGpsCoords.lat),
+      y: coordToInt(clickedGpsCoords.lng),
+      z: lastAltitude,
+      mission_type: 0,
+    }
+
+    setMissionItemsList((prev) => [...prev, newItem])
+
+    showNotification(`${commandName} added at ${clickedGpsCoords.lat.toFixed(7)}, ${clickedGpsCoords.lng.toFixed(7)}`)
     setIsMenuOpen(false)
   }
 
