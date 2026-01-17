@@ -7,7 +7,7 @@
 */
 
 // Base imports
-import React, { useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 
 // Maplibre and mantine imports
 import {
@@ -20,19 +20,16 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import Map from "react-map-gl/maplibre"
 
 // Helper scripts
-import { intToCoord } from "../../helpers/dataFormatters"
+import { intToCoord, coordToInt } from "../../helpers/dataFormatters"
 import { filterMissionItems } from "../../helpers/filterMissions"
 import { showNotification } from "../../helpers/notification"
 import { useSettings } from "../../helpers/settings"
 
 // Other dashboard imports
-import ContextMenuItem from "../mapComponents/contextMenuItem"
 import DrawLineCoordinates from "../mapComponents/drawLineCoordinates"
 import DroneMarker from "../mapComponents/droneMarker"
 import HomeMarker from "../mapComponents/homeMarker"
 import MarkerPin from "../mapComponents/markerPin"
-import MissionItems from "../mapComponents/missionItems"
-import useContextMenu from "../mapComponents/useContextMenu"
 
 // Tailwind styling
 import resolveConfig from "tailwindcss/resolveConfig"
@@ -40,6 +37,8 @@ import tailwindConfig from "../../../tailwind.config"
 const tailwindColors = resolveConfig(tailwindConfig).theme.colors
 
 const coordsFractionDigits = 7
+
+const CLICK_MOVE_THRESHOLD_PX = 5
 
 function MapSectionNonMemo({
   passedRef,
@@ -53,6 +52,7 @@ function MapSectionNonMemo({
   currentTab,
   markerDragEndCallback,
   rallyDragEndCallback,
+  onAddWaypoint,
   mapId = "dashboard",
 }) {
   const [connected] = useSessionStorage({
@@ -88,18 +88,110 @@ function MapSectionNonMemo({
   const [filteredMissionItems, setFilteredMissionItems] = useState([])
 
   const contextMenuRef = useRef()
-  const { clicked, setClicked, points, setPoints } = useContextMenu()
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 })
+  const [showInsert, setShowInsert] = useState(false)
   const [
     contextMenuPositionCalculationInfo,
     setContextMenuPositionCalculationInfo,
   ] = useState()
   const [clickedGpsCoords, setClickedGpsCoords] = useState({ lng: 0, lat: 0 })
+  const [disableMarkerDrag, setDisableMarkerDrag] = useState(false)
+  const clickCreationStateRef = useRef({
+    isActive: false,
+    startPoint: null,
+    hasMoved: false,
+  })
 
   const clipboard = useClipboard({ timeout: 500 })
+
+  const resetLeftClickTracker = useCallback(() => {
+    clickCreationStateRef.current = {
+      isActive: false,
+      startPoint: null,
+      hasMoved: false,
+    }
+  }, [])
+
+  function startedOnMarker(target) {
+    return !!(
+      target?.closest &&
+      (target.closest(".maplibregl-marker") ||
+        target.closest(".mapboxgl-marker") ||
+        target.closest(".icon-tabler-map-pin"))
+    )
+  }
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === "Escape") setIsMenuOpen(false)
+    }
+    function onMouseDown(e) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+        setIsMenuOpen(false)
+        setShowInsert(false)
+      }
+    }
+    if (isMenuOpen) {
+      document.addEventListener("keydown", onKeyDown)
+      document.addEventListener("mousedown", onMouseDown)
+    }
+    return () => {
+      document.removeEventListener("keydown", onKeyDown)
+      document.removeEventListener("mousedown", onMouseDown)
+    }
+  }, [isMenuOpen])
 
   useEffect(() => {
     return () => {}
   }, [connected])
+
+  // Re-enable marker dragging on global pointer up
+  useEffect(() => {
+    const onPointerUp = () => {
+      setDisableMarkerDrag(false)
+    }
+    window.addEventListener("pointerup", onPointerUp, true)
+    return () => {
+      window.removeEventListener("pointerup", onPointerUp, true)
+    }
+  }, [])
+
+  // Ensure right-click on markers opens context menu instead of initiating drag
+  useEffect(() => {
+    const mapObj = passedRef?.current?.getMap?.()
+    if (!mapObj) return
+    const container = mapObj.getContainer()
+
+    const blockRightClickDrag = (ev) => {
+      const isRightButton =
+        ev?.button === 2 || ev?.which === 3 || ev?.buttons === 2
+      if (!isRightButton) return
+      const target = ev.target
+      const insideMap =
+        container &&
+        (target === container || container.contains(target))
+      // If right click originated on a marker, block drag initiation
+      const isMarker =
+        !!(
+          target?.closest &&
+          (target.closest(".maplibregl-marker") ||
+            target.closest(".mapboxgl-marker") ||
+            target.closest(".icon-tabler-map-pin"))
+        )
+      if (insideMap && isMarker) {
+        ev.stopPropagation()
+        ev.preventDefault()
+      }
+    }
+
+    document.addEventListener("mousedown", blockRightClickDrag, true)
+    document.addEventListener("pointerdown", blockRightClickDrag, true)
+    return () => {
+      document.removeEventListener("mousedown", blockRightClickDrag, true)
+      document.removeEventListener("pointerdown", blockRightClickDrag, true)
+    }
+  }, [passedRef])
 
   useEffect(() => {
     // Check latest data point is valid
@@ -117,10 +209,27 @@ function MapSectionNonMemo({
   }, [missionItemsList])
 
   useEffect(() => {
-    setMissionItemsList(missionItems.mission_items)
+    setMissionItemsList((prev) => {
+      const previousList = Array.isArray(prev) ? prev : []
+      const incomingList = Array.isArray(missionItems?.mission_items)
+        ? missionItems.mission_items
+        : []
+
+      // Use incoming list as source of truth, but preserve any
+      // local items from previous that aren't in incoming yet
+      const incomingIds = new Set(incomingList.map((it) => it.id))
+      const additionalLocalItems = previousList.filter(
+        (it) =>
+          String(it?.id ?? "").startsWith("local-") &&
+          !incomingIds.has(it.id),
+      )
+
+      return [...incomingList, ...additionalLocalItems]
+    })
   }, [missionItems])
 
   useEffect(() => {
+    if (!contextMenuPositionCalculationInfo) return
     if (contextMenuRef.current) {
       const contextMenuWidth = Math.round(
         contextMenuRef.current.getBoundingClientRect().width,
@@ -145,9 +254,36 @@ function MapSectionNonMemo({
           contextMenuPositionCalculationInfo.clickedPoint.y - contextMenuHeight
       }
 
-      setPoints({ x, y })
+      setMenuPosition({ x, y })
     }
   }, [contextMenuPositionCalculationInfo])
+
+  function handleInsertCommand() {
+    setIsMenuOpen(false)
+  }
+
+  function handleDeleteNearest() {
+    setIsMenuOpen(false)
+  }
+
+  function openMenuAtClient(lat, lon, clientX, clientY) {
+    const mapObj = passedRef?.current?.getMap?.()
+    const container = mapObj?.getContainer?.()
+    const rect = container?.getBoundingClientRect?.()
+    const x = rect ? clientX - rect.left : clientX
+    const y = rect ? clientY - rect.top : clientY
+    setShowInsert(false)
+    setClickedGpsCoords({ lat, lng: lon })
+    setMenuPosition({ x, y })
+    setIsMenuOpen(true)
+    setContextMenuPositionCalculationInfo({
+      clickedPoint: { x, y },
+      canvasSize: {
+        width: container?.clientWidth || 0,
+        height: container?.clientHeight || 0,
+      },
+    })
+  }
 
   useEffect(() => {
     // center map on home point only on first instance of home point being
@@ -185,11 +321,19 @@ function MapSectionNonMemo({
             zoom: newViewState.viewState.zoom,
           })
         }
-        onDragStart={onDragstart}
+        onDragStart={(event) => {
+          if (typeof onDragstart === "function") {
+            onDragstart(event)
+          }
+        }}
         onContextMenu={(e) => {
           e.preventDefault()
-          setClicked(true)
+          setDisableMarkerDrag(true)
+          setShowInsert(false)
           setClickedGpsCoords(e.lngLat)
+          // Set position immediately to avoid flashing at previous location
+          setMenuPosition({ x: e.point.x, y: e.point.y })
+          setIsMenuOpen(true)
           setContextMenuPositionCalculationInfo({
             clickedPoint: e.point,
             canvasSize: {
@@ -198,6 +342,71 @@ function MapSectionNonMemo({
             },
           })
         }}
+        onPointerDownCapture={(e) => {
+          // React-level fallback to block right-button drag start on markers
+          const isRightButton =
+            e?.button === 2 || e?.nativeEvent?.which === 3 || e?.nativeEvent?.button === 2
+          if (!isRightButton) return
+          const target = e.target
+          if (
+            target?.closest?.(".maplibregl-marker") ||
+            target?.closest?.(".mapboxgl-marker") ||
+            target?.closest?.(".icon-tabler-map-pin")
+          ) {
+            setDisableMarkerDrag(true)
+            e.stopPropagation()
+            e.preventDefault()
+          }
+        }}
+        onMouseDown={(e) => {
+          if (
+            e?.originalEvent?.button !== 0 ||
+            typeof onAddWaypoint !== "function" ||
+            currentTab !== "mission" ||
+            isMenuOpen
+          ) {
+            return
+          }
+          if (startedOnMarker(e.originalEvent.target)) {
+            return
+          }
+          clickCreationStateRef.current = {
+            isActive: true,
+            startPoint: { x: e.point.x, y: e.point.y },
+            hasMoved: false,
+          }
+        }}
+        onMouseMove={(e) => {
+          if (!clickCreationStateRef.current.isActive) return
+          const dx = e.point.x - clickCreationStateRef.current.startPoint.x
+          const dy = e.point.y - clickCreationStateRef.current.startPoint.y
+          const distance = Math.hypot(dx, dy)
+          if (distance > CLICK_MOVE_THRESHOLD_PX) {
+            clickCreationStateRef.current.hasMoved = true
+          }
+        }}
+        onMouseUp={(e) => {
+          if (!clickCreationStateRef.current.isActive) return
+          const { hasMoved, startPoint } = clickCreationStateRef.current
+          const mouseUpMoved =
+            !!startPoint && !!e?.point
+              ? Math.hypot(e.point.x - startPoint.x, e.point.y - startPoint.y)
+              : 0
+          resetLeftClickTracker()
+          if (
+            hasMoved ||
+            mouseUpMoved > CLICK_MOVE_THRESHOLD_PX ||
+            e?.originalEvent?.button !== 0 ||
+            typeof onAddWaypoint !== "function" ||
+            currentTab !== "mission" ||
+            !e?.lngLat ||
+            startedOnMarker(e.originalEvent.target)
+          ) {
+            return
+          }
+          onAddWaypoint({ lat: e.lngLat.lat, lon: e.lngLat.lng })
+        }}
+        onMouseLeave={resetLeftClickTracker}
         cursor="default"
       >
         {/* Show marker on map if the position is set */}
@@ -214,11 +423,38 @@ function MapSectionNonMemo({
             />
           )}
 
-        <MissionItems
-          missionItems={missionItemsList}
-          editable={currentTab === "mission"}
-          dragEndCallback={markerDragEndCallback}
-        />
+        {/* Mission items as markers only (no connecting lines) */}
+        {filteredMissionItems.map((item, index) => {
+          return (
+            <MarkerPin
+              key={index}
+              id={item.id}
+              lat={intToCoord(item.x)}
+              lon={intToCoord(item.y)}
+              colour={tailwindColors.yellow[400]}
+              text={item.seq}
+              tooltipText={item.z ? `Alt: ${item.z}` : null}
+              draggable={currentTab === "mission" && !disableMarkerDrag && !isMenuOpen}
+              dragEndCallback={markerDragEndCallback}
+              onRightClick={({ lat, lon, clientX, clientY }) =>
+                openMenuAtClient(lat, lon, clientX, clientY)
+              }
+            />
+          )
+        })}
+
+        {/* Polyline connecting mission items in sequence (no wrap-around) */}
+        {(() => {
+          const lineCoords = [...filteredMissionItems]
+            .sort((a, b) => (isNaN(a?.seq) ? 0 : a.seq) - (isNaN(b?.seq) ? 0 : b.seq))
+            .map((it) => [intToCoord(it.y), intToCoord(it.x)])
+          return lineCoords.length > 1 ? (
+            <DrawLineCoordinates
+              coordinates={lineCoords}
+              colour={tailwindColors.yellow[400]}
+            />
+          ) : null
+        })()}
 
         {/* Show mission geo-fence MARKERS */}
         {missionItems.fence_items.map((item, index) => {
@@ -260,8 +496,11 @@ function MapSectionNonMemo({
               lon={intToCoord(item.y)}
               colour={tailwindColors.purple[400]}
               tooltipText={item.z ? `Alt: ${item.z}` : null}
-              draggable={currentTab === "rally"}
+              draggable={currentTab === "rally" && !disableMarkerDrag && !isMenuOpen}
               dragEndCallback={rallyDragEndCallback}
+              onRightClick={({ lat, lon, clientX, clientY }) =>
+                openMenuAtClient(lat, lon, clientX, clientY)
+              }
             />
           )
         })}
@@ -282,28 +521,28 @@ function MapSectionNonMemo({
           <HomeMarker
             lat={intToCoord(homePosition.lat)}
             lon={intToCoord(homePosition.lon)}
-            lineTo={
-              filteredMissionItems.length > 0 && [
-                intToCoord(filteredMissionItems[0].y),
-                intToCoord(filteredMissionItems[0].x),
-              ]
-            }
           />
         )}
 
-        {clicked && (
+        {isMenuOpen && (
           <div
             ref={contextMenuRef}
             className="absolute bg-falcongrey-700 rounded-md p-1"
-            style={{ top: points.y, left: points.x }}
+            style={{ top: menuPosition.y, left: menuPosition.x }}
+            onMouseDown={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+            }}
           >
-            <ContextMenuItem
+            <button
               onClick={() => {
                 clipboard.copy(
                   `${clickedGpsCoords.lat}, ${clickedGpsCoords.lng}`,
                 )
                 showNotification("Copied to clipboard")
+                setIsMenuOpen(false)
               }}
+              className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded"
             >
               <div className="w-full flex justify-between gap-2">
                 <p>
@@ -323,7 +562,58 @@ function MapSectionNonMemo({
                   />
                 </svg>
               </div>
-            </ContextMenuItem>
+            </button>
+
+            <div
+              className="relative"
+              onMouseEnter={() => setShowInsert(true)}
+              onMouseLeave={() => setShowInsert(false)}
+            >
+              <button
+                className="flex w-full items-center justify-between px-2 py-1 hover:bg-falcongrey-600 rounded"
+                onClick={() => setShowInsert((v) => !v)}
+              >
+                <span>Insert</span>
+                <span className="ml-4">▸</span>
+              </button>
+              {showInsert && (
+                <div className="absolute left-full top-0 bg-falcongrey-700 rounded-md p-1 shadow-lg">
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(16, "Waypoint")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Waypoint
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(22, "Takeoff")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Takeoff
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleInsertCommand(21, "Land")
+                    }}
+                    className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded whitespace-nowrap"
+                  >
+                    Land
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                handleDeleteNearest()
+              }}
+              className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded"
+            >
+              Delete
+            </button>
           </div>
         )}
       </Map>
@@ -337,3 +627,5 @@ function propsAreEqual(prev, next) {
 const MissionsMapSection = React.memo(MapSectionNonMemo, propsAreEqual)
 
 export default MissionsMapSection
+
+

@@ -13,11 +13,12 @@ import { v4 as uuidv4 } from "uuid"
 // Custom component and helpers
 import { Button, Divider, Tabs } from "@mantine/core"
 import Layout from "./components/layout"
+import FenceItemsTable from "./components/missions/fenceItemsTable"
 import MissionItemsTable from "./components/missions/missionItemsTable"
 import MissionsMapSection from "./components/missions/missionsMap"
 import RallyItemsTable from "./components/missions/rallyItemsTable"
 import NoDroneConnected from "./components/noDroneConnected"
-import { intToCoord } from "./helpers/dataFormatters"
+import { coordToInt, intToCoord } from "./helpers/dataFormatters"
 import {
   COPTER_MODES_FLIGHT_MODE_MAP,
   MAV_AUTOPILOT_INVALID,
@@ -43,10 +44,41 @@ export default function Missions() {
 
   const [activeTab, setActiveTab] = useState("mission")
 
-  // Mission
+  // Mission - Test data for development
   const [missionItems, setMissionItems] = useSessionStorage({
     key: "missionItems",
-    defaultValue: [],
+    defaultValue: [
+      {
+        id: uuidv4(),
+        seq: 0,
+        command: 16, // MAV_CMD_NAV_WAYPOINT
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 52.78031970, // Original waypoint 1
+        y: -0.70979300, // Original waypoint 1
+        z: 30.0, // altitude
+      },
+      {
+        id: uuidv4(),
+        seq: 1,
+        command: 16, // MAV_CMD_NAV_WAYPOINT
+        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        current: 0,
+        autocontinue: 1,
+        param1: 0.0,
+        param2: 0.0,
+        param3: 0.0,
+        param4: 0.0,
+        x: 52.78122830, // Original waypoint 2
+        y: -0.70989490, // Original waypoint 2
+        z: 30.0, // altitude
+      }
+    ],
   })
   const [fenceItems, setFenceItems] = useSessionStorage({
     key: "fenceItems",
@@ -72,6 +104,7 @@ export default function Missions() {
 
   // System data
   const [navControllerOutputData, setNavControllerOutputData] = useState({})
+  const [isUploading, setIsUploading] = useState(false)
 
   const incomingMessageHandler = useCallback(
     () => ({
@@ -135,10 +168,20 @@ export default function Missions() {
       showSuccessNotification(`${data.mission_type} read successfully`)
     })
 
+    socket.on("upload_mission_result", (data) => {
+      setIsUploading(false)
+      if (data.success) {
+        showSuccessNotification(data.message)
+      } else {
+        showErrorNotification(data.message)
+      }
+    })
+
     return () => {
       socket.off("incoming_msg")
       socket.off("home_position_result")
       socket.off("current_mission")
+      socket.off("upload_mission_result")
     }
   }, [connected])
 
@@ -159,6 +202,7 @@ export default function Missions() {
     return missionItem
   }
 
+
   function updateMissionItem(updatedMissionItem) {
     setMissionItems((prevItems) =>
       prevItems.map((item) =>
@@ -177,22 +221,257 @@ export default function Missions() {
       ),
     )
   }
+  function updateFenceItem(updatedFenceItem) {
+    setFenceItems((prevItems) =>
+      prevItems.map((item) =>
+        item.id === updatedFenceItem.id
+          ? { ...item, ...updatedFenceItem }
+          : item,
+      ),
+    )
+  }
 
   function readMissionFromDrone() {
     socket.emit("get_current_mission", { type: activeTab })
   }
 
   function writeMissionToDrone() {
-    return
+    if (!connected) {
+      showErrorNotification("Not connected to drone")
+      return
+    }
+
+    if (isUploading) {
+      showErrorNotification("Mission upload already in progress")
+      return
+    }
+
+    let missionData = []
+    if (activeTab === "mission") {
+      missionData = missionItems
+    } else if (activeTab === "fence") {
+      missionData = fenceItems
+    } else if (activeTab === "rally") {
+      missionData = rallyItems
+    }
+
+    if (missionData.length === 0) {
+      showErrorNotification(`No ${activeTab} items to upload`)
+      return
+    }
+    
+    setIsUploading(true)
+
+    // Convert mission items to the format expected by the backend
+    const formattedMissionData = missionData.map((item, index) => {
+      const formatted = {
+        seq: index,
+        frame: item.frame || 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        command: item.command || 16, // MAV_CMD_NAV_WAYPOINT
+        current: item.current || 0,
+        autocontinue: item.autocontinue || 1,
+        param1: item.param1 || 0.0,
+        param2: item.param2 || 0.0,
+        param3: item.param3 || 0.0,
+        param4: item.param4 || 0.0,
+        x: Math.round((item.x || 0) * 1e7), // latitude as integer (1e7 * degrees)
+        y: Math.round((item.y || 0) * 1e7), // longitude as integer (1e7 * degrees)
+        z: item.z || 0.0, // altitude
+      }
+      
+      return formatted
+    })
+
+    socket.emit("upload_mission", {
+      type: activeTab,
+      mission_data: formattedMissionData,
+    })
+
+    // Set a timeout to handle cases where the upload might hang
+    setTimeout(() => {
+      if (isUploading) {
+        setIsUploading(false)
+        showErrorNotification("Mission upload timed out. Please try again.")
+      }
+    }, 30000) // 30 second timeout
   }
 
   function importMissionFromFile() {
+    const input = document.createElement("input")
+    input.type = "file"
+    input.accept = ".mission,.waypoints"
+    input.onchange = (e) => {
+      const file = e.target.files[0]
+      if (!file) return
+
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const content = event.target.result
+        const extension = file.name.split(".").pop().toLowerCase()
+        if (extension === "waypoints") {
+          const lines = content.split(/\r?\n/)
+          const missionItemsWithIds = []
+          for (let i = 1; i < lines.length; i++){
+            let line = lines[i].split("\t").map((x) => parseFloat(x))
+            if (line.length!=12) continue
+            let newMissionItem = {
+              "mavpackettype": "MISSION_ITEM_INT",
+              "target_system": 255,
+              "target_component": 0,
+              "mission_type": 0,
+              "seq": line[0],
+              "current": line[1],
+              "frame": line[2],
+              "command": line[3],
+              "param1": line[4],
+              "param2": line[5],
+              "param3": line[6],
+              "param4": line[7],
+              "x": line[8] * (10 ** 7),
+              "y": line[9] * (10 ** 7),
+              "z": line[10],
+              "autocontinue": line[11],
+            }
+            missionItemsWithIds.push(addIdToItem(newMissionItem))
+          }
+          setMissionItems(missionItemsWithIds)
+        } else if (extension === "mission") {
+          const json = JSON.parse(content)
+
+          const missionItemsWithIds = []
+          const missionItems = json.mission.items
+          for (let i = 0; i < missionItems.length; i++){
+            let missionItem = missionItems[i]
+            let newMissionItem = {
+              "mavpackettype": "MISSION_ITEM_INT",
+              "target_system": 255,
+              "target_component": 0,
+              "mission_type": 0,
+              "seq": i,
+              "current": 0,
+              "frame": missionItem.frame,
+              "command": missionItem.command,
+              "param1": missionItem.params[0],
+              "param2": missionItem.params[1],
+              "param3": missionItem.params[2],
+              "param4": missionItem.params[3],
+              "x": missionItem.params[4] * (10 ** 7),
+              "y": missionItem.params[5] * (10 ** 7),
+              "z": missionItem.params[6],
+              "autocontinue": missionItem.autocontinue ? 1 : 0,
+            }
+            missionItemsWithIds.push(addIdToItem(newMissionItem))
+          }
+          setMissionItems(missionItemsWithIds)
+        }
+      }
+      reader.readAsText(file)
+    }
+    input.click()
+  }
+
+function saveMissionToFile() {
+  let missionData = []
+  if (activeTab === "mission") {
+    missionData = missionItems
+  } else if (activeTab === "fence") {
+    missionData = fenceItems
+  } else if (activeTab === "rally") {
+    missionData = rallyItems
+  }
+
+  if (missionData.length === 0) {
+    showErrorNotification(`No ${activeTab} items to save`)
     return
   }
 
-  function saveMissionToFile() {
-    return
+
+  const toDegrees = (value) => {
+    if (value == null) return 0
+    if (Math.abs(value) > 1000) {
+      return intToCoord(value)
+    }
+    return value
   }
+
+  let fileContent = "QGC WPL 110\n"
+
+  missionData.forEach((item, index) => {
+    const lat = toDegrees(item.x || 0)
+    const lon = toDegrees(item.y || 0)
+
+    const line = [
+      item.seq ?? index,   
+      item.current ?? 0,
+      item.frame ?? 3,
+      item.command ?? 16,
+      item.param1 ?? 0,
+      item.param2 ?? 0,
+      item.param3 ?? 0,
+      item.param4 ?? 0,
+      lat.toFixed(7),
+      lon.toFixed(7),
+      item.z ?? 0,
+      item.autocontinue ?? 1,
+    ]
+
+    fileContent += line.join("\t") + "\n"
+  })
+
+  const blob = new Blob([fileContent], { type: "text/plain" })
+  const link = document.createElement("a")
+  link.href = URL.createObjectURL(blob)
+  link.download = `${activeTab}_mission_${new Date()
+    .toISOString()
+    .split("T")[0]}.waypoints`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+
+  showSuccessNotification(`Saved ${activeTab} mission to file`)
+}
+
+  const handleAddWaypointFromMap = useCallback(
+    ({ lat, lon }) => {
+      if (typeof lat !== "number" || typeof lon !== "number") {
+        return
+      }
+
+      setMissionItems((prevItems) => {
+        const safePrev = Array.isArray(prevItems) ? prevItems : []
+        const maxSeq = safePrev.reduce((max, item) => {
+          const seqNum = Number(item?.seq)
+          return Number.isFinite(seqNum) && seqNum > max ? seqNum : max
+        }, -1)
+
+        const lastAltitude =
+          safePrev.length > 0
+            ? safePrev[safePrev.length - 1]?.z ?? 30
+            : 30
+
+        const newWaypoint = {
+          id: `local-${uuidv4()}`,
+          seq: maxSeq + 1,
+          command: 16,
+          frame: 3,
+          current: 0,
+          autocontinue: 1,
+          param1: 0.0,
+          param2: 0.0,
+          param3: 0.0,
+          param4: 0.0,
+          x: coordToInt(lat),
+          y: coordToInt(lon),
+          z: lastAltitude,
+          mission_type: 0,
+        }
+
+        return [...safePrev, newWaypoint]
+      })
+    },
+    [setMissionItems],
+  )
+
 
   return (
     <Layout currentPage="missions">
@@ -232,12 +511,14 @@ export default function Missions() {
                     onClick={() => {
                       writeMissionToDrone()
                     }}
-                    disabled={!connected}
+                    disabled={!connected || isUploading}
+                    loading={isUploading}
                     className="grow"
                   >
-                    Write {activeTab}
+                    {isUploading ? `Uploading ${activeTab}...` : `Write ${activeTab}`}
                   </Button>
                 </div>
+
 
                 <Divider className="my-1" />
 
@@ -299,6 +580,7 @@ export default function Missions() {
                   currentTab={activeTab}
                   markerDragEndCallback={updateMissionItem}
                   rallyDragEndCallback={updateRallyItem}
+                  onAddWaypoint={handleAddWaypointFromMap}
                   mapId="missions"
                 />
               </div>
@@ -334,7 +616,12 @@ export default function Missions() {
                       updateMissionItem={updateMissionItem}
                     />
                   </Tabs.Panel>
-                  <Tabs.Panel value="fence"></Tabs.Panel>
+                  <Tabs.Panel value="fence">
+                    <FenceItemsTable
+                      fenceItems={fenceItems}
+                      updateFenceItem={updateFenceItem}
+                    />
+                  </Tabs.Panel>
                   <Tabs.Panel value="rally">
                     <RallyItemsTable
                       rallyItems={rallyItems}
