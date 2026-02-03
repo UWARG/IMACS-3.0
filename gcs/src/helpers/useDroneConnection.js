@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react"
+import React, { createContext, useContext, useEffect, useState, useMemo } from "react"
 import { useLocalStorage, useSessionStorage } from "@mantine/hooks"
 import { socket } from "./socket.js"
 import { showErrorNotification } from "./notification.js"
@@ -182,7 +182,7 @@ export function DroneConnectionProvider({ children }) {
     socket.emit("disconnect_from_drone")
   }
 
-  const value = {
+  const value = useMemo(() => ({
     connected,
     connectedToSocket,
     connecting,
@@ -209,7 +209,22 @@ export function DroneConnectionProvider({ children }) {
     getComPorts,
     connectToDrone,
     disconnect,
-  }
+  }), [
+    connected,
+    connectedToSocket,
+    connecting,
+    wireless,
+    selectedBaudRate,
+    droneConnectionStatusMessage,
+    aircraftType,
+    connectionType,
+    networkType,
+    ip,
+    port,
+    comPorts,
+    selectedComPort,
+    fetchingComPorts,
+  ])
 
   return React.createElement(DroneConnectionContext.Provider, { value }, children)
 }
