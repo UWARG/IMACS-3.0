@@ -12,6 +12,7 @@ import { Notifications } from "@mantine/notifications"
 import { showErrorNotification } from "../helpers/notification"
 import { socket } from "../helpers/socket"
 import Navbar from "./navbar"
+import { DroneConnectionProvider } from "../helpers/useDroneConnection"
 
 export default function Layout({ children, currentPage }) {
   // Handle drone errors
@@ -27,9 +28,11 @@ export default function Layout({ children, currentPage }) {
 
   return (
     <>
-      <Navbar currentPage={currentPage} className="no-drag" />
-      <Notifications limit={5} position="bottom-center" />
-      {children}
+      <DroneConnectionProvider>
+        <Navbar currentPage={currentPage} className="no-drag" />
+        <Notifications limit={5} position="bottom-center" />
+        {children}
+      </DroneConnectionProvider>
     </>
   )
 }
