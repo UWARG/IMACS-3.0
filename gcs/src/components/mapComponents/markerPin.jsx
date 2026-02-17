@@ -21,6 +21,7 @@ const MarkerPin = React.memo(
     showOnTop = false,
     draggable = false,
     dragEndCallback = () => {},
+    dragCallback = () => {},
     onRightClick = () => {},
   }) => {
     return (
@@ -29,6 +30,13 @@ const MarkerPin = React.memo(
         longitude={lon}
         className={showOnTop && "z-10"}
         draggable={draggable}
+        onDrag={(e) => {
+          dragCallback({
+            id: id,
+            x: coordToInt(e.lngLat.lat),
+            y: coordToInt(e.lngLat.lng),
+          })
+        }}
         onDragEnd={(e) => {
           dragEndCallback({
             id: id,

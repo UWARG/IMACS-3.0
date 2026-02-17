@@ -41,12 +41,12 @@ def getHomePosition() -> None:
 @socketio.on("takeoff")
 def takeoff(data: TakeoffDataType) -> None:
     """
-    Commands the drone to takeoff, only works when the dashboard page is loaded.
+    Commands the drone to takeoff, only works when the dashboard or missions page is loaded.
     """
-    if droneStatus.state != "dashboard":
+    if droneStatus.state not in ["dashboard", "missions"]:
         socketio.emit(
             "params_error",
-            {"message": "You must be on the dashboard screen to takeoff."},
+            {"message": "You must be on the dashboard or missions screen to takeoff."},
         )
         fgcs_logger.debug(f"Current state: {droneStatus.state}")
         return
@@ -70,12 +70,12 @@ def takeoff(data: TakeoffDataType) -> None:
 @socketio.on("land")
 def land() -> None:
     """
-    Commands the drone to land, only works when the dashboard page is loaded.
+    Commands the drone to land, only works when the dashboard or missions page is loaded.
     """
-    if droneStatus.state != "dashboard":
+    if droneStatus.state not in ["dashboard", "missions"]:
         socketio.emit(
             "params_error",
-            {"message": "You must be on the dashboard screen to land."},
+            {"message": "You must be on the dashboard or missions screen to land."},
         )
         fgcs_logger.debug(f"Current state: {droneStatus.state}")
         return
@@ -91,12 +91,12 @@ def land() -> None:
 @socketio.on("reposition")
 def reposition(data: RepositionDataType) -> None:
     """
-    Commands the drone to reposition, only works when the dashboard page is loaded.
+    Commands the drone to reposition, only works when the dashboard or missions page is loaded.
     """
-    if droneStatus.state != "dashboard":
+    if droneStatus.state not in ["dashboard", "missions"]:
         socketio.emit(
             "params_error",
-            {"message": "You must be on the dashboard screen to reposition."},
+            {"message": "You must be on the dashboard or missions screen to reposition."},
         )
         fgcs_logger.debug(f"Current state: {droneStatus.state}")
         return

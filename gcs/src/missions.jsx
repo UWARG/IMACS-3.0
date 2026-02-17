@@ -11,7 +11,7 @@ import { ResizableBox } from "react-resizable"
 import { v4 as uuidv4 } from "uuid"
 
 // Custom component and helpers
-import { Button, Divider, Tabs } from "@mantine/core"
+import { Button, Divider, NumberInput, Popover, Tabs } from "@mantine/core"
 import Layout from "./components/layout"
 import FenceItemsTable from "./components/missions/fenceItemsTable"
 import MissionItemsTable from "./components/missions/missionItemsTable"
@@ -59,8 +59,8 @@ export default function Missions() {
         param2: 0.0,
         param3: 0.0,
         param4: 0.0,
-        x: 52.78031970, // Original waypoint 1
-        y: -0.70979300, // Original waypoint 1
+        x: coordToInt(52.78031970), // Original waypoint 1
+        y: coordToInt(-0.70979300), // Original waypoint 1
         z: 30.0, // altitude
       },
       {
@@ -74,8 +74,8 @@ export default function Missions() {
         param2: 0.0,
         param3: 0.0,
         param4: 0.0,
-        x: 52.78122830, // Original waypoint 2
-        y: -0.70989490, // Original waypoint 2
+        x: coordToInt(52.78122830), // Original waypoint 2
+        y: coordToInt(-0.70989490), // Original waypoint 2
         z: 30.0, // altitude
       }
     ],
@@ -105,6 +105,19 @@ export default function Missions() {
   // System data
   const [navControllerOutputData, setNavControllerOutputData] = useState({})
   const [isUploading, setIsUploading] = useState(false)
+
+  const [takeoffAltitude, setTakeoffAltitude] = useLocalStorage({
+    key: "takeoffAltitude",
+    defaultValue: 10,
+  })
+
+  function takeoff() {
+    socket.emit("takeoff", { alt: takeoffAltitude })
+  }
+
+  function land() {
+    socket.emit("land")
+  }
 
   const incomingMessageHandler = useCallback(
     () => ({
@@ -212,6 +225,20 @@ export default function Missions() {
       ),
     )
   }
+
+  const handleMarkerDrag = useCallback(
+    (updatedMissionItem) => {
+      setMissionItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === updatedMissionItem.id
+            ? { ...item, x: updatedMissionItem.x, y: updatedMissionItem.y }
+            : item,
+        ),
+      )
+    },
+    [setMissionItems],
+  )
+
   function updateRallyItem(updatedRallyItem) {
     setRallyItems((prevItems) =>
       prevItems.map((item) =>
@@ -432,7 +459,7 @@ function saveMissionToFile() {
 }
 
   const handleAddWaypointFromMap = useCallback(
-    ({ lat, lon }) => {
+    ({ lat, lon, command = 16 }) => {
       if (typeof lat !== "number" || typeof lon !== "number") {
         return
       }
@@ -452,7 +479,7 @@ function saveMissionToFile() {
         const newWaypoint = {
           id: `local-${uuidv4()}`,
           seq: maxSeq + 1,
-          command: 16,
+          command: command,
           frame: 3,
           current: 0,
           autocontinue: 1,
@@ -498,6 +525,53 @@ function saveMissionToFile() {
             >
               <div className="flex flex-col gap-8 p-4">
                 <div className="flex flex-col gap-4">
+                  <div className="flex flex-wrap gap-2">
+                    {/** Takeoff button with popover */}
+                    <Popover
+                      width={200}
+                      position="bottom"
+                      withArrow
+                      shadow="md"
+                    >
+                      <Popover.Target>
+                        <Button className="grow" disabled={!connected}>
+                          Takeoff
+                        </Button>
+                      </Popover.Target>
+                      <Popover.Dropdown className="flex flex-col space-y-2">
+                        <NumberInput
+                          label="Takeoff altitude (m)"
+                          placeholder="Takeoff altitude (m)"
+                          value={takeoffAltitude}
+                          onChange={setTakeoffAltitude}
+                          min={0}
+                          allowNegative={false}
+                          hideControls
+                        />
+                        <Button
+                          onClick={() => {
+                            takeoff()
+                          }}
+                        >
+                          Takeoff
+                        </Button>
+                      </Popover.Dropdown>
+                    </Popover>
+
+                    {/** Land Button */}
+                    <Button
+                      onClick={() => {
+                        land()
+                      }}
+                      disabled={!connected}
+                      className="grow"
+                    >
+                      Land
+                    </Button>
+                  </div>
+
+                  <Divider className="my-1" />
+
                   <Button
                     onClick={() => {
                       readMissionFromDrone()
@@ -579,6 +653,7 @@ function saveMissionToFile() {
                   getFlightMode={getFlightMode}
                   currentTab={activeTab}
                   markerDragEndCallback={updateMissionItem}
+                  markerDragCallback={handleMarkerDrag}
                   rallyDragEndCallback={updateRallyItem}
                   onAddWaypoint={handleAddWaypointFromMap}
                   mapId="missions"
