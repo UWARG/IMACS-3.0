@@ -52,6 +52,7 @@ function MapSectionNonMemo({
   getFlightMode,
   currentTab,
   markerDragEndCallback,
+  markerDragCallback,
   rallyDragEndCallback,
   onAddWaypoint,
   mapId = "dashboard",
@@ -265,38 +266,19 @@ function MapSectionNonMemo({
       return
     }
 
-    // Get the last altitude from existing mission items, default to 30
-    const lastAltitude =
-      missionItemsList.length > 0
-        ? missionItemsList[missionItemsList.length - 1]?.z ?? 30
-        : 30
+    // Call the parent's onAddWaypoint callback with the clicked coordinates and command type
+    onAddWaypoint({ 
+      lat: clickedGpsCoords.lat, 
+      lon: clickedGpsCoords.lng,
+      command: commandId 
+    })
 
-    // Create new mission item at clicked coordinates
-    const maxSeq = missionItemsList.reduce((max, item) => {
-      const seqNum = Number(item?.seq)
-      return Number.isFinite(seqNum) && seqNum > max ? seqNum : max
-    }, -1)
-
-    const newItem = {
-      id: `local-${uuidv4()}`,
-      seq: maxSeq + 1,
-      command: commandId,
-      frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
-      current: 0,
-      autocontinue: 1,
-      param1: 0.0,
-      param2: 0.0,
-      param3: 0.0,
-      param4: 0.0,
-      x: coordToInt(clickedGpsCoords.lat),
-      y: coordToInt(clickedGpsCoords.lng),
-      z: lastAltitude,
-      mission_type: 0,
+    // Show different message for Takeoff since it won't appear on map
+    if (commandId === 22) {
+      showNotification(`${commandName} added to mission (check mission items table)`)
+    } else {
+      showNotification(`${commandName} added at ${clickedGpsCoords.lat.toFixed(7)}, ${clickedGpsCoords.lng.toFixed(7)}`)
     }
-
-    setMissionItemsList((prev) => [...prev, newItem])
-
-    showNotification(`${commandName} added at ${clickedGpsCoords.lat.toFixed(7)}, ${clickedGpsCoords.lng.toFixed(7)}`)
     setIsMenuOpen(false)
   }
 
@@ -462,10 +444,10 @@ function MapSectionNonMemo({
           )}
 
         {/* Mission items as markers only (no connecting lines) */}
-        {filteredMissionItems.map((item, index) => {
+        {filteredMissionItems.map((item) => {
           return (
             <MarkerPin
-              key={index}
+              key={item.id}
               id={item.id}
               lat={intToCoord(item.x)}
               lon={intToCoord(item.y)}
@@ -474,6 +456,7 @@ function MapSectionNonMemo({
               tooltipText={item.z ? `Alt: ${item.z}` : null}
               draggable={currentTab === "mission" && !disableMarkerDrag && !isMenuOpen}
               dragEndCallback={markerDragEndCallback}
+              dragCallback={markerDragCallback}
               onRightClick={({ lat, lon, clientX, clientY }) =>
                 openMenuAtClient(lat, lon, clientX, clientY)
               }
@@ -498,7 +481,7 @@ function MapSectionNonMemo({
         {missionItems.fence_items.map((item, index) => {
           return (
             <MarkerPin
-              key={index}
+              key={item.id || `fence-${index}`}
               lat={intToCoord(item.x)}
               lon={intToCoord(item.y)}
               colour={tailwindColors.blue[400]}
@@ -525,10 +508,10 @@ function MapSectionNonMemo({
         )}
 
         {/* Show mission rally point */}
-        {missionItems.rally_items.map((item, index) => {
+        {missionItems.rally_items.map((item) => {
           return (
             <MarkerPin
-              key={index}
+              key={item.id}
               id={item.id}
               lat={intToCoord(item.x)}
               lon={intToCoord(item.y)}
