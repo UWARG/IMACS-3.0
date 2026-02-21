@@ -26,6 +26,8 @@ export default function MissionItems({
   missionItems,
   editable = false,
   dragEndCallback = () => {},
+  selectedId = null,
+  onRightClick = () => {},
 }) {
   const [filteredMissionItems, setFilteredMissionItems] = useState(
     filterMissionItems(missionItems),
@@ -98,6 +100,8 @@ export default function MissionItems({
             tooltipText={item.z ? `Alt: ${item.z}` : null}
             draggable={editable}
             dragEndCallback={dragEndCallback}
+            selected={selectedId === item.id}
+            onRightClick={onRightClick}
           />
         )
       })}

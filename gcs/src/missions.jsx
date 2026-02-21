@@ -194,6 +194,9 @@ export default function Missions() {
     return
   }
 
+  function deleteMissionItem(id) {
+    setMissionItems((prev) => prev.filter((item) => item.id !== id))
+  }
   return (
     <Layout currentPage="missions">
       {/* Banner to let people know that things are still under development */}
@@ -300,6 +303,7 @@ export default function Missions() {
                   markerDragEndCallback={updateMissionItem}
                   rallyDragEndCallback={updateRallyItem}
                   mapId="missions"
+                  deleteMissionItemCallback={deleteMissionItem}
                 />
               </div>
 
