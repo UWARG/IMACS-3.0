@@ -21,6 +21,7 @@ const MarkerPin = React.memo(
     showOnTop = false,
     draggable = false,
     dragEndCallback = () => {},
+    selected = false,
     onRightClick = () => {},
   }) => {
     return (
@@ -40,14 +41,19 @@ const MarkerPin = React.memo(
         <Tooltip disabled={tooltipText === null} label={tooltipText}>
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
+            width={selected ? "36" : "24"}
+            height={selected ? "36" : "24"}
             viewBox="0 0 24 48"
-            fill={colour}
-            stroke="currentColor"
-            strokeWidth="1"
+            fill={selected ? "white" : colour}
+            stroke={selected ? colour : "currentColor"}
+            strokeWidth={selected ? "2" : "1"}
             strokeLinecap="round"
             strokeLinejoin="round"
+            className="icon icon-tabler icons-tabler-outline icon-tabler-map-pin h-16 w-16 text-black transition-all duration-150"
+            style={selected ? { filter: `drop-shadow(0 0 6px ${colour})` } : {}}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              onRightClick(id, e.clientX, e.clientY)
             className="icon icon-tabler icons-tabler-outline icon-tabler-map-pin h-16 w-16 text-black"
             style={{ cursor: "pointer" }}
             onContextMenu={(e) => {
@@ -81,7 +87,7 @@ const MarkerPin = React.memo(
           >
             <path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />
             {text && (
-              <text textAnchor="middle" x="12" y="14" className="text-black">
+              <text textAnchor="middle" x="12" y="14" className="text-black" fill={selected ? colour : "currentColor"}>
                 {text}
               </text>
             )}
@@ -89,9 +95,6 @@ const MarkerPin = React.memo(
         </Tooltip>
       </Marker>
     )
-  },
-  (prevProps, nextProps) => {
-    return JSON.stringify(prevProps) === JSON.stringify(nextProps)
   },
 )
 

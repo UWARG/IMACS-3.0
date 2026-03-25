@@ -52,8 +52,10 @@ function MapSectionNonMemo({
   currentTab,
   markerDragEndCallback,
   rallyDragEndCallback,
+  deleteMissionItemCallback = () => {},
   onAddWaypoint,
   mapId = "dashboard",
+
 }) {
   const [connected] = useSessionStorage({
     key: "connectedToDrone",
@@ -86,6 +88,7 @@ function MapSectionNonMemo({
     missionItems.mission_items,
   )
   const [filteredMissionItems, setFilteredMissionItems] = useState([])
+  const [selectedWaypointId, setSelectedWaypointId] = useState(null)
 
   const contextMenuRef = useRef()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -305,6 +308,27 @@ function MapSectionNonMemo({
     }
   }, [homePosition])
 
+  function handleMarkerRightClick(id, clientX, clientY) { // shows right-click menu
+    setSelectedWaypointId(id)
+    const mapEl = document.getElementById("map")
+    const rect = mapEl.getBoundingClientRect()
+    const lngLat = passedRef.current.getMap().unproject([clientX - rect.left, clientY - rect.top])
+    setClickedGpsCoords({ lat: lngLat.lat, lng: lngLat.lng })
+    setContextMenuPositionCalculationInfo({
+      clickedPoint: { x: clientX - rect.left, y: clientY - rect.top },
+      canvasSize: { height: rect.height, width: rect.width },
+    })
+    setClicked(true)
+  }
+
+  function deleteSelectedWaypoint() { // deletes the selected waypoint
+    if (selectedWaypointId === null) return
+    setMissionItemsList((prev) => prev.filter((item) => item.id !== selectedWaypointId))
+    deleteMissionItemCallback(selectedWaypointId)
+    setSelectedWaypointId(null)
+    setClicked(false)
+  }
+
   return (
     <div className="w-initial h-full" id="map">
       <Map
@@ -331,6 +355,7 @@ function MapSectionNonMemo({
           setDisableMarkerDrag(true)
           setShowInsert(false)
           setClickedGpsCoords(e.lngLat)
+          setSelectedWaypointId(null) // initialize as null
           // Set position immediately to avoid flashing at previous location
           setMenuPosition({ x: e.point.x, y: e.point.y })
           setIsMenuOpen(true)
@@ -436,13 +461,13 @@ function MapSectionNonMemo({
               tooltipText={item.z ? `Alt: ${item.z}` : null}
               draggable={currentTab === "mission" && !disableMarkerDrag && !isMenuOpen}
               dragEndCallback={markerDragEndCallback}
+              selected={selectedWaypointId === item.id}
               onRightClick={({ lat, lon, clientX, clientY }) =>
                 openMenuAtClient(lat, lon, clientX, clientY)
               }
             />
           )
         })}
-
         {/* Polyline connecting mission items in sequence (no wrap-around) */}
         {(() => {
           const lineCoords = [...filteredMissionItems]
@@ -563,7 +588,6 @@ function MapSectionNonMemo({
                 </svg>
               </div>
             </button>
-
             <div
               className="relative"
               onMouseEnter={() => setShowInsert(true)}
@@ -605,12 +629,10 @@ function MapSectionNonMemo({
                 </div>
               )}
             </div>
-
             <button
-              onClick={() => {
-                handleDeleteNearest()
-              }}
-              className="block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded"
+              onClick={deleteSelectedWaypoint}
+              disabled={selectedWaypointId === null}
+              className={`block w-full text-left px-2 py-1 hover:bg-falcongrey-600 rounded ${selectedWaypointId === null ? "opacity-40" : "text-red-400"}`}
             >
               Delete
             </button>

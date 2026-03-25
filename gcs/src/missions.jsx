@@ -385,6 +385,12 @@ function saveMissionToFile() {
     return
   }
 
+  function deleteMissionItem(id) {
+    setMissionItems((prev) => {
+    const filtered = prev.filter((item) => item.id !== id)
+    return filtered.map((item, index) => ({ ...item, seq: index }))
+    })
+  }
 
   const toDegrees = (value) => {
     if (value == null) return 0
@@ -582,6 +588,7 @@ function saveMissionToFile() {
                   rallyDragEndCallback={updateRallyItem}
                   onAddWaypoint={handleAddWaypointFromMap}
                   mapId="missions"
+                  deleteMissionItemCallback={deleteMissionItem}
                 />
               </div>
 
