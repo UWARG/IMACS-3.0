@@ -195,7 +195,10 @@ export default function Missions() {
   }
 
   function deleteMissionItem(id) {
-    setMissionItems((prev) => prev.filter((item) => item.id !== id))
+    setMissionItems((prev) => {
+    const filtered = prev.filter((item) => item.id !== id)
+    return filtered.map((item, index) => ({ ...item, seq: index }))
+    })
   }
   return (
     <Layout currentPage="missions">
