@@ -54,6 +54,35 @@ const MarkerPin = React.memo(
             onContextMenu={(e) => {
               e.preventDefault()
               onRightClick(id, e.clientX, e.clientY)
+            className="icon icon-tabler icons-tabler-outline icon-tabler-map-pin h-16 w-16 text-black"
+            style={{ cursor: "pointer" }}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              e.stopPropagation?.()
+              onRightClick({
+                lat,
+                lon,
+                clientX: e.clientX,
+                clientY: e.clientY,
+              })
+            }}
+            onPointerDown={(e) => {
+              const btn = e?.button ?? e?.nativeEvent?.button
+              const which = e?.nativeEvent?.which
+              if (btn === 2 || which === 3) {
+                e.preventDefault()
+                e.stopPropagation?.()
+                e.nativeEvent?.stopImmediatePropagation?.()
+              }
+            }}
+            onMouseDown={(e) => {
+              const btn = e?.button ?? e?.nativeEvent?.button
+              const which = e?.nativeEvent?.which
+              if (btn === 2 || which === 3) {
+                e.preventDefault()
+                e.stopPropagation?.()
+                e.nativeEvent?.stopImmediatePropagation?.()
+              }
             }}
           >
             <path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />

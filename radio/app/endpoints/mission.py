@@ -1,3 +1,4 @@
+from typing import List
 from typing_extensions import TypedDict
 
 import app.droneStatus as droneStatus
@@ -11,6 +12,11 @@ class CurrentMissionType(TypedDict):
 
 class ControlMissionType(TypedDict):
     action: str
+
+
+class UploadMissionType(TypedDict):
+    type: str
+    mission_data: List[dict]
 
 
 @socketio.on("get_current_mission")
@@ -93,12 +99,14 @@ def getCurrentMissionAll() -> None:
 @socketio.on("control_mission")
 def controlMission(data: ControlMissionType) -> None:
     """
-    Controls the current mission based on the action, only works if dashboard screen is loaded.
+    Controls the current mission based on the action, only works if dashboard or missions screen is loaded.
     """
-    if droneStatus.state != "dashboard":
+    if droneStatus.state not in ["dashboard", "missions"]:
         socketio.emit(
             "params_error",
-            {"message": "You must be on the dashboard screen to control a mission."},
+            {
+                "message": "You must be on the dashboard or missions screen to control a mission."
+            },
         )
         fgcs_logger.debug(f"Current state: {droneStatus.state}")
         return
@@ -108,7 +116,9 @@ def controlMission(data: ControlMissionType) -> None:
 
     action = data.get("action", None)
 
-    if action not in ["start", "restart"]:
+    fgcs_logger.info(f"Received mission control action: {action}")
+
+    if action not in ["start", "restart", "pause", "resume"]:
         socketio.emit(
             "params_error",
             {"message": f"Invalid action for controlling the mission, got {action}."},
@@ -120,5 +130,55 @@ def controlMission(data: ControlMissionType) -> None:
         result = droneStatus.drone.missionController.startMission()
     elif action == "restart":
         result = droneStatus.drone.missionController.restartMission()
+    elif action == "pause":
+        fgcs_logger.info("Pausing mission...")
+        result = droneStatus.drone.missionController.pauseMission()
+        fgcs_logger.info(f"Pause result: {result}")
+    elif action == "resume":
+        fgcs_logger.info("Resuming mission...")
+        result = droneStatus.drone.missionController.resumeMission()
+        fgcs_logger.info(f"Resume result: {result}")
 
     socketio.emit("mission_control_result", result)
+
+
+@socketio.on("upload_mission")
+def uploadMission(data: UploadMissionType) -> None:
+    """
+    Uploads mission data to the drone, only works if missions screen is loaded.
+    """
+    if droneStatus.state != "missions":
+        socketio.emit(
+            "params_error",
+            {"message": "You must be on the missions screen to upload a mission."},
+        )
+        fgcs_logger.debug(f"Current state: {droneStatus.state}")
+        return
+
+    if not droneStatus.drone:
+        return notConnectedError(action="upload mission")
+
+    mission_type = data.get("type")
+    mission_data = data.get("mission_data", [])
+    mission_type_array = ["mission", "fence", "rally"]
+
+    if mission_type not in mission_type_array:
+        socketio.emit(
+            "upload_mission_result",
+            {
+                "success": False,
+                "message": f"Invalid mission type. Must be 'mission', 'fence', or 'rally', got {mission_type}.",
+            },
+        )
+        fgcs_logger.error(f"Invalid mission type for upload: {mission_type}")
+        return
+
+    fgcs_logger.info(f"Uploading {mission_type} mission with {len(mission_data)} items")
+    fgcs_logger.debug(f"Mission data: {mission_data}")
+
+    result = droneStatus.drone.missionController.uploadMissionData(
+        mission_data, mission_type_array.index(mission_type)
+    )
+
+    fgcs_logger.info(f"Upload result: {result}")
+    socketio.emit("upload_mission_result", result)
