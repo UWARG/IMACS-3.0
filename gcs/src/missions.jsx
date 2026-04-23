@@ -168,8 +168,7 @@ export default function Missions() {
       showSuccessNotification(`${data.mission_type} read successfully`)
     })
 
-    socket.on("upload_mission_result", (data) => {
-      setIsUploading(false)
+    socket.on("write_mission_result", (data) => {
       if (data.success) {
         showSuccessNotification(data.message)
       } else {
@@ -181,7 +180,7 @@ export default function Missions() {
       socket.off("incoming_msg")
       socket.off("home_position_result")
       socket.off("current_mission")
-      socket.off("upload_mission_result")
+      socket.off("write_mission_result")
     }
   }, [connected])
 
