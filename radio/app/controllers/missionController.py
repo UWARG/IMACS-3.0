@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, List
 
 import serial
 from app.customTypes import Response
-from app.utils import commandAccepted, wpToMissionItemInt
+from app.utils import commandAccepted
 from pymavlink import mavutil, mavwp
 
 if TYPE_CHECKING:
@@ -238,7 +238,7 @@ class MissionController:
         if not mission_type_check.get("success"):
             return mission_type_check
 
-        failure_message = f"Failed to get mission item {item_number}/{mission_count} for mission type {mission_type}"
+        failure_message = f"Failed to get mission item {item_number}/{mission_count - 1} for mission type {mission_type}"
 
         self.drone.is_listening = False
 
@@ -260,7 +260,7 @@ class MissionController:
 
             if response:
                 self.drone.logger.debug(
-                    f"Got response for mission item {item_number}/{mission_count} for mission type {mission_type}"
+                    f"Got response for mission item {item_number}/{mission_count - 1} for mission type {mission_type}"
                 )
                 return {
                     "success": True,
@@ -269,7 +269,7 @@ class MissionController:
 
             else:
                 self.drone.logger.error(
-                    f"Got no response for mission item {item_number}/{mission_count} for mission type {mission_type}"
+                    f"Got no response for mission item {item_number}/{mission_count - 1} for mission type {mission_type}"
                 )
                 return {
                     "success": False,
@@ -279,7 +279,7 @@ class MissionController:
         except serial.serialutil.SerialException:
             self.drone.is_listening = True
             self.drone.logger.error(
-                f"Got no response for mission item {item_number}/{mission_count}, serial exception"
+                f"Got no response for mission item {item_number}/{mission_count - 1}, serial exception"
             )
             return {
                 "success": False,
@@ -695,7 +695,7 @@ class MissionController:
 
     def uploadMission(self, mission_type: int) -> Response:
         """
-        Uploads the current mission to the drone.
+        Uploads the current mission to the drone. This method overwrites the current loader if the upload is successful.
 
         Args:
             mission_type (int): The type of mission to upload. 0=Mission,1=Fence,2=Rally.
@@ -769,7 +769,7 @@ class MissionController:
                     )
                     self.drone.master.mav.send(converted_item)
 
-                    if response.seq == loader.count() - 1:
+                    if response.seq == new_loader.count() - 1:
                         mission_ack_response = self.drone.master.recv_match(
                             type=[
                                 "MISSION_ACK",
