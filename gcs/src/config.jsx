@@ -28,6 +28,8 @@ import {
 } from "./helpers/notification"
 import { socket } from "./helpers/socket"
 
+import ExtendedTuning from "./components/config/extendedTuning"
+
 const tailwindColors = resolveConfig(tailwindConfig).theme.colors
 
 export default function Config() {
@@ -105,6 +107,7 @@ export default function Config() {
               <Tabs.Tab value="motor_test">Motor Test</Tabs.Tab>
               <Tabs.Tab value="rc_calibration">RC Calibration</Tabs.Tab>
               <Tabs.Tab value="flightmodes">Flight modes</Tabs.Tab>
+              <Tabs.Tab value="extended_tuning">Extended Tuning</Tabs.Tab>
             </Tabs.List>
             <Tabs.Panel value="gripper">
               <div className={paddingTop}>
@@ -124,6 +127,11 @@ export default function Config() {
             <Tabs.Panel value="flightmodes">
               <div className={paddingTop}>
                 <FlightModes />
+              </div>
+            </Tabs.Panel>
+            <Tabs.Panel value="extended_tuning">
+              <div className={paddingTop}>
+                <ExtendedTuning />
               </div>
             </Tabs.Panel>
           </Tabs>

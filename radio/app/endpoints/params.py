@@ -39,7 +39,7 @@ def refresh_params() -> None:
     """
     Refresh all parameters
     """
-    if droneStatus.state != "params":
+    if droneStatus.state not in ("params", "config"):
         socketio.emit(
             "params_error",
             {"message": "You must be on the params screen to refresh the parameters."},
